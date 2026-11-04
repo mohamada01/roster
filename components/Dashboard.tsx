@@ -14,10 +14,12 @@ export const statusName = (t: Dict, s: string) => ({ queued: t.tQueued, running:
 
 export function Steps({ c }: { c: Co }) {
   const { t } = useApp();
+  // Older rows marked a failure at stage 5; show it at the first step instead
+  const stage = c.status === 'failed' && c.stage >= 5 ? 0 : c.stage;
   return <div className="steps">{t.stages.map((s, i) => {
     let cl = '';
-    if (c.status === 'done' || i < c.stage) cl = 'ok';
-    else if (i === c.stage) cl = c.status === 'running' ? 'run' : c.status === 'failed' ? 'bad' : c.status === 'partial' ? 'warn' : '';
+    if (c.status === 'done' || i < stage) cl = 'ok';
+    else if (i === stage) cl = c.status === 'running' ? 'run' : c.status === 'failed' ? 'bad' : c.status === 'partial' ? 'warn' : '';
     return <i key={i} className={cl} title={s} />;
   })}</div>;
 }

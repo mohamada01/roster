@@ -30,7 +30,7 @@ export const PLAT_KEYS = Object.keys(PLATS);
 export const ISSUES: Record<string, L> = {
   site_unreachable: { ar: 'الموقع ما فتحش، حتى بالمتصفح الكامل.', en: 'The website would not load, even in a full browser.' },
   site_no_description: { ar: 'الموقع ما فيهوش وصف مكتوب في الصفحة.', en: 'The website has no description in its page.' },
-  no_website: { ar: 'مفيش موقع للشركة. ضيف لينك الموقع أو حطه في البايو.', en: 'No website found. Add the site link, or put it in the profile bio.' },
+  no_website: { ar: 'مفيش موقع للشركة، وإنستجرام منع قراءة البايو. اضغط «تعديل» وحط لينك الموقع في خانة «الموقع».', en: 'No website found, and Instagram blocked reading the bio. Click Edit and put the site link in the Website field.' },
   followers_blocked: { ar: 'المنصات منعت قراءة أعداد المتابعين. تقدر تكتبها يدوي من «تعديل».', en: 'The platforms blocked reading follower counts. You can type them in from Edit.' },
   followers_some_missing: { ar: 'بعض المنصات ما رجّعتش عدد المتابعين. تقدر تكتبه يدوي من «تعديل».', en: 'Some platforms did not return a follower count. You can type it in from Edit.' },
   error: { ar: 'حصل خطأ غير متوقع أثناء السحب. جرّب تاني.', en: 'Something went wrong while fetching. Try again.' }

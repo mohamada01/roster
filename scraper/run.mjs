@@ -138,7 +138,7 @@ async function processCompany(c) {
     links, followers, followers_total: total, spark, growth_30d: growth,
     sortlist_url: sl ? sl.url : c.sortlist_url, sortlist_rating: sl ? sl.rating : c.sortlist_rating, sortlist_reviews: sl ? sl.reviews : c.sortlist_reviews,
     category: category === 'none' ? c.category : category,
-    status, stage: 5, issues, fetched_at: new Date().toISOString()
+    status, stage: status === 'done' ? 5 : !site ? 0 : issues.includes('followers_blocked') ? 2 : 5, issues, fetched_at: new Date().toISOString()
   });
   console.log(`  → ${status}${issues.length ? ' (' + issues.join(', ') + ')' : ''}`);
 }

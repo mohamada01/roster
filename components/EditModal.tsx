@@ -6,7 +6,8 @@ import { Co } from '@/lib/types';
 import { normalize } from '@/lib/util';
 
 export default function EditModal({ c, close }: { c: Co; close: () => void }) {
-  const { t, lang, saveEdit, toast } = useApp();
+  const { t, lang, saveEdit, toast, retry } = useApp();
+  const [site, setSite] = useState(c.website || '');
   const o = c.overrides || {};
   const [name, setName] = useState(o.name ?? c.name ?? '');
   const [cat, setCat] = useState(o.category ?? c.category);
@@ -26,11 +27,21 @@ export default function EditModal({ c, close }: { c: Co; close: () => void }) {
     const f = Object.fromEntries(Object.entries(fol).filter(([, v]) => v.trim() !== '' && !isNaN(+v)).map(([k, v]) => [k, Math.round(+v)]));
     if (Object.keys(f).length) ov.followers = f;
     const links = { ...c.links };
-    extra.split(/[\s,]+/).filter(Boolean).forEach(l => { const n = normalize(l); if (!n.bad && n.kind !== 'website') links[n.kind!] = n.url!; });
-    const ok = await saveEdit(c.id, { overrides: ov, hidden, links });
+    let website = c.website;
+    extra.split(/[\s,]+/).filter(Boolean).forEach(l => {
+      const n = normalize(l);
+      if (n.bad) return;
+      if (n.kind === 'website') website = n.url!; else links[n.kind!] = n.url!;
+    });
+    if (site.trim()) { const n = normalize(site); if (!n.bad && n.kind === 'website') website = n.url!; }
+    const siteChanged = (website || '') !== (c.website || '');
+    const linksChanged = JSON.stringify(links) !== JSON.stringify(c.links);
+    const patch: any = { overrides: ov, hidden, links };
+    if (siteChanged) { patch.website = website; patch.domain = website ? normalize(website).disp : null; }
+    const ok = await saveEdit(c.id, patch);
     setBusy(false);
     toast(ok ? t.saved : t.errGeneric);
-    if (ok) close();
+    if (ok) { close(); if (siteChanged || linksChanged) retry(c.id); }
   };
   const fields = PLAT_KEYS.filter(k => k in c.links || k in c.fol);
 
@@ -40,6 +51,9 @@ export default function EditModal({ c, close }: { c: Co; close: () => void }) {
         <div className="m-head"><h3>{t.editT}</h3><button className="mini" type="button" aria-label="Close" onClick={close}>✕</button></div>
         <div className="m-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div className="field"><label htmlFor="edName">{t.fName}</label><input type="text" id="edName" value={name} onChange={e => setName(e.target.value)} /></div>
+          <div className="field"><label htmlFor="edSite">{t.fSite}</label>
+            <input type="text" id="edSite" dir="ltr" value={site} placeholder="https://example.com" onChange={e => setSite(e.target.value)} />
+            <span className="note">{t.fSiteNote}</span></div>
           <div className="field"><label htmlFor="edCat">{t.fCatL}</label>
             <select className="select" id="edCat" style={{ width: '100%' }} value={cat} onChange={e => setCat(e.target.value)}>
               {Object.keys(CATS).map(k => <option key={k} value={k}>{CATS[k][lang]}</option>)}</select></div>

@@ -154,15 +154,21 @@ async function processCompany(c) {
 
   // Fallbacks from the profiles, always verbatim
   const firstProfile = field => { for (const p of PROFILE_ORDER) { const v = profiles[p] && profiles[p][field]; if (v) return { v, p }; } return null; };
+  // A refresh never wipes good data: if the site can't be read this time, what it said before stays
+  const keptFromSite = c.description && c.description_source && !/profile$/.test(c.description_source);
   let description = site && site.description, descriptionSource = site && site.descriptionSource;
+  if (!description && keptFromSite) { description = c.description; descriptionSource = c.description_source; }
   if (!description) { const b = firstProfile('bio'); if (b) { description = b.v; descriptionSource = PROFILE_SOURCE[b.p]; } }
+  const knownName = c.name && !isGenericName(c.name) && !/^[\w.-]+\.[a-z]{2,}\/?$/i.test(c.name) ? c.name : null;
   let name = site && site.name;
+  if ((!name || (site && !site.description)) && knownName && c.description) name = knownName;
   if (!name) { const n = firstProfile('name'); name = n ? n.v : null; }
   // Logo: the first site logo that really loads, then a profile picture, then the site's small icon
   let logo = null, logoTone = null, logoFrom = '-';
   const pick = async (cands, from) => { if (logo) return; const g = await firstGoodLogo(cands); if (g) { logo = g.url; logoTone = g.tone; logoFrom = from; } };
   if (site) await pick(site.logoCandidates.filter(x => x.quality === 'good'), 'site');
   await pick(PROFILE_ORDER.map(p => profiles[p] && profiles[p].avatar).filter(Boolean), 'profile');
+  if (c.logo_url) await pick([c.logo_url], 'kept');
   if (site) await pick(site.logoCandidates.filter(x => x.quality !== 'good'), 'site icon');
 
   // 3. Sortlist
@@ -190,8 +196,8 @@ async function processCompany(c) {
     logo_url: logo || null, logo_tone: logoTone,
     countries: site && site.countries.length ? site.countries : c.countries,
     services: site && site.services && site.services.length ? site.services : (site ? [] : c.services),
-    about: site ? site.about : null, about_source: site ? site.aboutSource : null,
-    contact: site ? site.contact : {},
+    about: site ? site.about : c.about || null, about_source: site ? site.aboutSource : c.about_source || null,
+    contact: site ? site.contact : c.contact || {},
     founded: (site && site.founded) || c.founded,
     links, followers, followers_total: total, spark, growth_30d: growth,
     sortlist_url: sl ? sl.url : c.sortlist_url, sortlist_rating: sl ? sl.rating : c.sortlist_rating, sortlist_reviews: sl ? sl.reviews : c.sortlist_reviews,

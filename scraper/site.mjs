@@ -491,5 +491,9 @@ export async function readSite(url) {
   if (!description && about) { description = about.split('\n\n')[0]; descriptionSource = 'about page'; }
   if (!description && parsed.heroText) { description = parsed.heroText; descriptionSource = 'homepage text'; }
 
+  // Nothing readable at all (an empty shell, a silent block or a hiccup): treat as unreachable,
+  // so the run keeps what it knew before and uses the social profiles
+  if (!description && !about && parsed.bodyLength < 250) return { error: 'site_unreachable' };
+
   return { ...parsed, description, descriptionSource, about, aboutSource: about ? parsed.aboutUrl : null, services, finalUrl: res.url || url, rendered };
 }

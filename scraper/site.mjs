@@ -3,7 +3,7 @@
 // Falls back to a real browser for sites that build their content with JavaScript.
 // Every text field is copied verbatim from the site; nothing is rewritten.
 import * as cheerio from 'cheerio';
-import { get, isProfileLink, platformOf, PLATFORMS } from './lib.mjs';
+import { get, isProfileLink, cleanProfileLink, platformOf, PLATFORMS } from './lib.mjs';
 
 const COUNTRY_WORDS = [
   [/\b(cairo|egypt|alexandria|giza)\b|القاهرة|مصر/i, 'EG'],
@@ -228,15 +228,31 @@ export function pickLogo($, org, meta, pageUrl) {
     else if (size >= 120) add(href, 3, 'good');
     else add(href, 7, 'weak');
   });
-  // The logo image in the site header
-  const headerImg = $('header img, nav img, [class*=logo] img, img[class*=logo], img[id*=logo], img[alt*=logo i], a[href="/"] img').first();
-  if (headerImg.length) add(headerImg.attr('src') || headerImg.attr('data-src') || (headerImg.attr('srcset') || '').split(' ')[0], 4, 'good');
+  // The logo image in the site header. Client/partner logo strips are skipped.
+  const NOT_OWN = /client|partner|brands?\b|logos|marquee|carousel|slider|swiper|ticker|trusted|award/i;
+  const imgSrc = el => { const i = $(el); return i.attr('src') || i.attr('data-src') || (i.attr('srcset') || '').split(' ')[0]; };
+  const own = el => {
+    const src = imgSrc(el) || '';
+    if (!src || /\/(logos|clients|partners|brands)\//i.test(src)) return false;
+    return !$(el).parents().toArray().some(p => NOT_OWN.test(($(p).attr('class') || '') + ' ' + ($(p).attr('id') || '')));
+  };
+  const tiers = [
+    'header [class*=logo] img, header img[class*=logo], header img[alt*=logo i], header a[href="/"] img, a[class*=logo] img, a[href="/"] img',
+    '[class*=logo] img, img[class*=logo], img[id*=logo], img[alt*=logo i], img[src*=logo i]',
+    'header img, nav img'
+  ];
+  for (let t = 0; t < tiers.length; t++) {
+    const el = $(tiers[t]).toArray().find(own);
+    if (el) add(imgSrc(el), 4 + t * 0.1, 'good');
+  }
   const ogImg = meta('og:image');
   if (ogImg && /logo/i.test(ogImg)) add(ogImg, 5, 'good');
   add(meta('msapplication-TileImage'), 6, 'good');
   add('/favicon.ico', 9, 'weak');
   cand.sort((a, b) => a.rank - b.rank);
-  return cand.length ? { logo: cand[0].u, logoQuality: cand[0].quality } : { logo: null, logoQuality: 'none' };
+  const seen = new Set();
+  const logoCandidates = cand.filter(c => !seen.has(c.u) && seen.add(c.u)).map(({ u, quality }) => ({ u, quality }));
+  return cand.length ? { logo: cand[0].u, logoQuality: cand[0].quality, logoCandidates } : { logo: null, logoQuality: 'none', logoCandidates: [] };
 }
 
 // ---------- dead, parked or protected sites ----------
@@ -249,7 +265,8 @@ export function deadReason({ html, finalUrl, title, logo, bodyLength }) {
   if (/^chrome-error:|^about:blank/i.test(finalUrl || '')) return 'site_down';
   let logoHost = '';
   try { logoHost = new URL(logo).hostname; } catch { /* none */ }
-  if (PARKING_HOST.test(host) || PARKING_HOST.test(logoHost) ||
+  if (PARKING_HOST.test(host) || PARKING_HOST.test(logoHost) || /^\/lander\b/.test((() => { try { return new URL(finalUrl).pathname; } catch { return ''; } })()) ||
+      /location\.href\s*=\s*["']\/lander|parking-lander|sedoparking|parkingcrew|bodis\.com|domain-for-sale|afternic\.com|forsale\.godaddy/i.test(body) ||
       /domain (?:name )?(?:is|may be) for sale|buy this domain|this domain is parked|parked free|domain parking|make an offer on this domain|inquire about this domain|get this domain/i.test(body)) return 'site_parked';
   if (/^(just a moment|attention required|checking your browser|ddos-guard|please wait|one more step|access denied|security check)/i.test(title || '') ||
       (bodyLength < 1500 && /cf-chl|challenge-platform|captcha|are you a robot|verify you are human/i.test(body))) return 'site_blocked';
@@ -285,7 +302,7 @@ export function parseSite(html, pageUrl) {
   const title = clean($('title').first().text());
   const name = pickName([meta('og:site_name'), typeof org.name === 'string' ? org.name : null, meta('application-name'), ...titleParts(title)], pageUrl);
 
-  const { logo, logoQuality } = pickLogo($, org, meta, pageUrl);
+  const { logo, logoQuality, logoCandidates } = pickLogo($, org, meta, pageUrl);
 
   // Links: platform profiles, internal redirects like /instagram, About and Services pages, contact
   const links = {};
@@ -301,7 +318,7 @@ export function parseSite(html, pageUrl) {
     if (!u) return;
     const wa = u.match(/(?:wa\.me\/|api\.whatsapp\.com\/send\/?\?(?:.*&)?phone=)(%2B|\+)?(\d{7,15})/i);
     if (wa) { whatsapp = whatsapp || '+' + wa[2]; return; }
-    if (isProfileLink(u)) { const k = platformOf(u); if (!links[k]) links[k] = u.split('?')[0]; return; }
+    if (platformOf(u)) { const clean = cleanProfileLink(u); if (clean) { const k = platformOf(u); if (!links[k]) links[k] = clean; } return; }
     try {
       const x = new URL(u);
       if (x.origin !== origin) return;
@@ -352,7 +369,7 @@ export function parseSite(html, pageUrl) {
   const classifyText = [name, description, heroText, $('title').text(), $('h1,h2,h3').text(), $('nav').text(), services.join(', ')].join(' ').replace(/\s+/g, ' ').slice(0, 4000);
 
   return {
-    name, title, description, descriptionSource, heroText, logo, logoQuality, links, internalSocial,
+    name, title, description, descriptionSource, heroText, logo, logoQuality, logoCandidates, links, internalSocial,
     dead: deadReason({ html, finalUrl: pageUrl, title, logo, bodyLength: bodyText.trim().length }),
     sortlist: links.sortlist || null, aboutUrl, servicesUrl, services,
     contact: { emails: [...emails].slice(0, 3), phones: [...phones].slice(0, 3), whatsapp, address },
@@ -381,12 +398,14 @@ export async function closeBrowser() {
 async function render(url) {
   const b = await browser();
   const page = await b.newPage();
+  const hops = [];
+  page.on('framenavigated', f => { try { hops.push(new URL(f.url()).hostname); } catch { /* ignore */ } });
   try {
     await page.goto(url, { waitUntil: 'networkidle', timeout: 35000 }).catch(() => page.waitForTimeout(3000));
     // Scroll once so lazy sections (services, footers) load
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)).catch(() => {});
     await page.waitForTimeout(2000);
-    return { html: await page.content(), url: page.url() };
+    return { html: await page.content(), url: page.url(), parked: hops.some(h => PARKING_HOST.test(h)) };
   } finally { await page.close(); }
 }
 
@@ -430,6 +449,8 @@ export async function readSite(url) {
     try {
       const r = await render(url);
       const p2 = parseSite(r.html, r.url);
+      // A for-sale page anywhere in the chain means the domain isn't the company's site
+      if (r.parked || p2.dead === 'site_parked') return { error: 'site_parked' };
       if (!parsed || (parsed.dead && !p2.dead) || (!p2.dead && (p2.bodyLength > parsed.bodyLength || (p2.description && !parsed.description)))) { parsed = { ...p2, description: p2.description || parsed?.description, descriptionSource: p2.description ? p2.descriptionSource : parsed?.descriptionSource }; rendered = true; }
       else for (const [k, v] of Object.entries(p2.links)) if (!parsed.links[k]) parsed.links[k] = v;
     } catch (e) {
@@ -443,7 +464,8 @@ export async function readSite(url) {
   for (const [k, u] of Object.entries(parsed.internalSocial || {})) {
     if (parsed.links[k]) continue;
     const real = await resolveRedirect(u);
-    if (real && isProfileLink(real)) parsed.links[k] = real.split('?')[0];
+    const clean = real && cleanProfileLink(real);
+    if (clean) parsed.links[k] = clean;
   }
 
   // About page: verbatim paragraphs

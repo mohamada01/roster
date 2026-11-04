@@ -3,7 +3,7 @@ export type Status = 'queued' | 'running' | 'done' | 'partial' | 'failed';
 export type Row = {
   id: string; slug: string; dedupe_key: string; input_url: string;
   name: string | null; domain: string | null; website: string | null;
-  description: string | null; description_source: string | null; logo_url: string | null;
+  description: string | null; description_source: string | null; logo_url: string | null; logo_tone?: string | null;
   category: string; countries: string[]; founded: number | null; services: string[];
   links: Record<string, string>; followers: Record<string, number | null>; followers_total: number;
   growth_30d: number | null; spark: number[];

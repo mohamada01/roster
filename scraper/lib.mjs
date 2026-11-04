@@ -41,11 +41,41 @@ export function normalize(raw) {
   return { key: h, kind: 'website', url: 'https://' + x.hostname + '/', disp: h };
 }
 
+// Accounts of website builders and themes. Template footers link to these, not to the company.
+const BUILDER_HANDLES = new Set(['wix', 'wixstudio', 'wix-com', 'wixcom', 'wixwebsites', 'squarespace', 'godaddy', 'wordpress', 'wordpressdotcom',
+  'shopify', 'webflow', 'webflowapp', 'framer', 'framerjs', 'elementor', 'hostinger', 'envato', 'themeforest', 'hubspot', 'wpengine',
+  'weebly', 'jimdo', 'strikingly', 'carrd', 'zyro', 'duda', 'bluehost', 'siteground', 'namecheap', 'canva', 'facebook', 'instagram',
+  'linkedin', 'tiktok', 'youtube', 'twitter', 'x', 'behance', 'dribbble', 'meta', 'yourpage', 'yourcompany', 'username', 'company']);
+
+/**
+ * Turn a link found on a site into a clean profile link, or null when it isn't the company's profile:
+ * TikTok video -> its account, LinkedIn admin page -> the company page, builder/template accounts -> null.
+ */
+export function cleanProfileLink(url) {
+  const kind = platformOf(url);
+  if (!kind) return null;
+  let x;
+  try { x = new URL(url); } catch { return null; }
+  const parts = x.pathname.split('/').filter(Boolean);
+  let handle = '';
+  try { handle = decodeURIComponent((kind === 'linkedin' || (kind === 'youtube' && /^(c|channel|user)$/.test(parts[0] || '')) ? parts[1] : parts[0]) || ''); } catch { /* keep empty */ }
+  handle = handle.replace(/^@/, '').toLowerCase();
+  if (kind !== 'sortlist' && BUILDER_HANDLES.has(handle)) return null;
+  if (kind === 'tiktok' && parts[0] && parts[0].startsWith('@')) return `https://www.tiktok.com/${parts[0]}`;
+  if (kind === 'linkedin' && /^(company|school|showcase)$/.test(parts[0] || '') && parts[1]) return `https://www.linkedin.com/${parts[0]}/${parts[1]}/`;
+  if (kind === 'facebook' && /^profile\.php$/i.test(parts[0] || '')) {
+    const id = x.searchParams.get('id');
+    return id && /^\d+$/.test(id) ? `https://www.facebook.com/profile.php?id=${id}` : null;
+  }
+  return isProfileLink(x.href) ? x.origin + x.pathname : null;
+}
+
 export function isProfileLink(url) {
   const kind = platformOf(url);
   if (!kind) return false;
   try {
     const x = new URL(url);
+    if (kind === 'facebook' && /\/profile\.php$/i.test(x.pathname)) return !!x.searchParams.get('id');
     if (NOT_PROFILE.test(x.pathname + x.search)) return false;
     const parts = x.pathname.split('/').filter(Boolean);
     if (!parts.length) return false;
@@ -103,3 +133,23 @@ export function slugify(s) {
   return String(s || '').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase()
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
 }
+
+const foldName = s => String(s || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+/**
+ * Does a profile's display name belong to this company? Guards against a site linking someone else's
+ * account (a template link, a typo, a taken handle). Names in non-Latin scripts can't be compared, so they pass.
+ */
+export function profileMatches(profileName, refs) {
+  if (!profileName) return true;
+  if (/[\u0600-\u06ff\u0400-\u04ff\u4e00-\u9fff]/.test(profileName)) return true;
+  const n = foldName(profileName);
+  if (n.length < 3) return true;
+  const list = refs.map(foldName).filter(r => r.length >= 3);
+  if (!list.length) return true;
+  return list.some(r => {
+    if (r.includes(n) || n.includes(r)) return true;
+    for (let i = 0; i + 5 <= n.length; i++) if (r.includes(n.slice(i, i + 5))) return true;
+    return false;
+  });
+}
+

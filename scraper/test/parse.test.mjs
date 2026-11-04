@@ -156,9 +156,14 @@ test('detects parked, protected and dead websites', () => {
 
 test('logo: prefers apple-touch and large icons, then the header logo; a tiny favicon is weak', () => {
   const pick = html => { const $ = cheerio.load(html); return pickLogo($, {}, n => $(`meta[property="${n}"]`).attr('content') || null, 'https://x.com/'); };
-  assert.deepEqual(pick('<link rel="icon" href="/fav.ico"><link rel="apple-touch-icon" href="/apple.png"><header><img class="logo" src="/logo.svg"></header>'), { logo: 'https://x.com/apple.png', logoQuality: 'good' });
-  assert.deepEqual(pick('<link rel="icon" href="/fav-32.png" sizes="32x32"><header><img src="/brand-logo.png"></header><meta property="og:image" content="/hero.jpg">'), { logo: 'https://x.com/brand-logo.png', logoQuality: 'good' });
-  assert.deepEqual(pick('<meta property="og:image" content="/grini-hero.jpg">'), { logo: 'https://x.com/favicon.ico', logoQuality: 'weak' });
+  const pick2 = html => { const r = pick(html); return { logo: r.logo, logoQuality: r.logoQuality }; };
+  assert.deepEqual(pick2('<link rel="icon" href="/fav.ico"><link rel="apple-touch-icon" href="/apple.png"><header><img class="logo" src="/logo.svg"></header>'), { logo: 'https://x.com/apple.png', logoQuality: 'good' });
+  assert.deepEqual(pick2('<link rel="icon" href="/fav-32.png" sizes="32x32"><header><img src="/brand-logo.png"></header><meta property="og:image" content="/hero.jpg">'), { logo: 'https://x.com/brand-logo.png', logoQuality: 'good' });
+  assert.deepEqual(pick2('<meta property="og:image" content="/grini-hero.jpg">'), { logo: 'https://x.com/favicon.ico', logoQuality: 'weak' });
+  // A strip of client logos is never taken as the company's logo
+  const r = pick('<header><a href="/"><img src="/brand.svg"></a></header><section class="clients-logos"><img class="logo" src="/images/logos/client1.png"></section>');
+  assert.ok(r.logoCandidates.some(c => c.u === 'https://x.com/brand.svg'));
+  assert.ok(!r.logoCandidates.some(c => /client1/.test(c.u)));
 });
 
 test('LinkedIn public page: name, about text, website, followers', () => {
@@ -178,4 +183,46 @@ test('TikTok profile fields', () => {
   assert.equal(r.count, 3114);
   assert.equal(r.profile.name, 'Pplofintern');
   assert.equal(r.profile.bio, 'Creative studio ✨ Cairo');
+});
+
+import { cleanProfileLink, profileMatches } from '../lib.mjs';
+import { toneOf } from '../logo.mjs';
+
+test('builder and template accounts are dropped, odd links cleaned', () => {
+  assert.equal(cleanProfileLink('https://www.linkedin.com/company/wix-com'), null);
+  assert.equal(cleanProfileLink('https://www.tiktok.com/@wix'), null);
+  assert.equal(cleanProfileLink('https://twitter.com/WixStudio'), null);
+  assert.equal(cleanProfileLink('https://www.youtube.com/user/Wix'), null);
+  assert.equal(cleanProfileLink('https://www.facebook.com/profile.php'), null);
+  assert.equal(cleanProfileLink('https://www.tiktok.com/@udjatagency/video/7526954684024933637'), 'https://www.tiktok.com/@udjatagency');
+  assert.equal(cleanProfileLink('https://www.linkedin.com/company/103198511/admin/dashboard/'), 'https://www.linkedin.com/company/103198511/');
+  assert.equal(cleanProfileLink('https://www.instagram.com/kijamii/'), 'https://www.instagram.com/kijamii/');
+  assert.equal(cleanProfileLink('https://www.sortlist.com/agency/cultark'), 'https://www.sortlist.com/agency/cultark');
+});
+
+test('profiles of someone else are spotted', () => {
+  const refs = ['16 DASH', '16dash'];
+  assert.equal(profileMatches('Domenic Ashburn', refs), false);
+  assert.equal(profileMatches('Dasha', refs), false);
+  assert.equal(profileMatches('Elephant Phunk', ['E-Phunk', 'ephunk', 'elephantphunk']), true);
+  assert.equal(profileMatches('Müller&#39;s®', ["Müller's", 'mullermena']), true);
+  assert.equal(profileMatches('Big Fish Ventures', ['BigFish', 'bigfishmena']), true);
+  assert.equal(profileMatches('Arrows', ['Arrows Egypt', 'arrowsegypt']), true);
+  assert.equal(profileMatches('Wix', ['Jenica Agency', 'jenicaagency']), false);
+  assert.equal(profileMatches('وكالة', ['x']), true);
+  assert.equal(profileMatches('Anything', []), true);
+});
+
+test('logo tone: white on transparent needs a dark tile', () => {
+  const px = (r, g, b, a, n) => Array.from({ length: n }, () => [r, g, b, a]).flat();
+  assert.equal(toneOf(Uint8Array.from([...px(255, 255, 255, 255, 30), ...px(0, 0, 0, 0, 70)])).tone, 'light');
+  assert.equal(toneOf(Uint8Array.from([...px(20, 20, 20, 255, 30), ...px(0, 0, 0, 0, 70)])).tone, 'dark');
+  assert.ok(toneOf(Uint8Array.from(px(0, 0, 0, 0, 100))).blank);
+  assert.ok(toneOf(Uint8Array.from(px(255, 255, 255, 255, 100))).blank);
+});
+
+test('GoDaddy-style for-sale lander is parked', async () => {
+  const { deadReason } = await import('../site.mjs');
+  assert.equal(deadReason({ html: '<script>window.onload=function(){window.location.href="/lander"}</script>', finalUrl: 'https://nammi.co/', title: '', logo: null, bodyLength: 0 }), 'site_parked');
+  assert.equal(deadReason({ html: '<p>hi</p>', finalUrl: 'https://nammi.co/lander', title: '', logo: null, bodyLength: 2 }), 'site_parked');
 });

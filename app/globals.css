@@ -552,6 +552,8 @@ a.st{text-decoration:none}
 .svc-wrap small{font-size:13px}
 
 /* Image logos sit on white so dark marks stay visible in dark mode */
+/* White logos (measured by the scraper) sit on near-black instead */
+.logo.has-img.on-dark{background:#141414}
 .logo.has-img{background:#fff;box-shadow:inset 0 0 0 1px var(--line)}
 .site-note{display:flex;gap:10px;align-items:flex-start;margin:0 0 14px;padding:10px 12px;border-radius:10px;background:color-mix(in srgb,var(--warn) 10%,transparent);font-size:13px;color:var(--fg);line-height:1.6}
 .site-note .d{margin-top:6px}

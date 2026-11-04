@@ -11,7 +11,7 @@ export function Logo({ c, size }: { c: Co; size?: number }) {
   if (size) { style.width = size; style.height = size; }
   const empty = !c.description && !c.total;
   if (c.logo_url && !broken) {
-    return <div className="logo has-img" style={style}><img src={c.logo_url} alt="" loading="lazy" onError={() => setBroken(true)} /></div>;
+    return <div className={'logo has-img' + (c.logo_tone === 'light' ? ' on-dark' : '')} style={style}><img src={c.logo_url} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(true)} /></div>;
   }
   return <div className={'logo' + (empty ? ' empty' : '')} style={style}>{initials(c.display)}</div>;
 }

@@ -70,6 +70,7 @@ create index if not exists companies_status_idx on companies (status);
 alter table companies add column if not exists about text;
 alter table companies add column if not exists about_source text;
 alter table companies add column if not exists contact jsonb not null default '{}';
+alter table companies add column if not exists logo_tone text;  -- 'light' = white logo, shown on a dark tile
 
 -- Daily follower history, used for growth and charts
 create table if not exists snapshots (

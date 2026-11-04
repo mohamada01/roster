@@ -4,11 +4,12 @@
 //   MODE=all      -> every company
 //   COMPANY_ID=…  -> just one company
 import { createClient } from '@supabase/supabase-js';
-import { readSite, closeBrowser, isGenericName, nameFromDomain } from './site.mjs';
+import { readSite, closeBrowser, isGenericName, nameFromDomain, domainCore } from './site.mjs';
+import { firstGoodLogo } from './logo.mjs';
 import { FETCHERS, websiteFromProfile } from './platforms.mjs';
 import { readSortlist, discoverSortlist } from './sortlist.mjs';
 import { classify } from './classify.mjs';
-import { normalize, platformOf, isProfileLink, PLATFORMS, hostOf, sleep } from './lib.mjs';
+import { normalize, platformOf, cleanProfileLink, profileMatches, PLATFORMS, hostOf, handleOf, sleep } from './lib.mjs';
 
 const { SUPABASE_URL, SUPABASE_SECRET_KEY } = process.env;
 if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) {
@@ -70,22 +71,43 @@ async function history(id, today, followers) {
 const PROFILE_ORDER = ['linkedin', 'instagram', 'facebook', 'tiktok', 'youtube', 'behance', 'dribbble'];
 const PROFILE_SOURCE = { linkedin: 'linkedin profile', instagram: 'instagram profile', facebook: 'facebook profile', tiktok: 'tiktok profile', youtube: 'youtube profile', behance: 'behance profile', dribbble: 'dribbble profile' };
 
-async function fetchProfiles(links, done, profiles, followers) {
+async function fetchProfiles(links, done, profiles, followers, refs) {
   for (const p of PLATFORMS) {
     if (!links[p] || done.has(p)) continue;
     done.add(p);
     const r = await FETCHERS[p](links[p]).catch(() => ({ count: null, reason: 'error' }));
+    const name = r.profile && r.profile.name;
+    if (name && !profileMatches(name, refs())) {
+      // Someone else's account: don't count it and don't show it
+      console.log(`  ${p}: ✗ skipped, the profile is "${name}", not this company`);
+      delete links[p];
+      await sleep(1200);
+      continue;
+    }
     followers[p] = r.count ?? null;
     if (r.profile) profiles[p] = r.profile;
-    console.log(`  ${p}: ${r.count ?? '— ' + (r.reason || '')}${r.profile && r.profile.name ? ' · ' + r.profile.name : ''}`);
+    console.log(`  ${p}: ${r.count ?? '— ' + (r.reason || '')}${name ? ' · ' + name : ''}`);
     await sleep(1200);
   }
+}
+
+/** Readable name when nothing better is known: the domain, or the handle of a social link. */
+function fallbackName(c, website, input) {
+  if (c.name && !isGenericName(c.name) && !/^[\w.-]+\.[a-z]{2,}\/?$/i.test(c.name) && !/^https?:/i.test(c.name)) return c.name;
+  if (website) return nameFromDomain(website);
+  if (input.kind && input.kind !== 'website') {
+    const h = handleOf(input.url).replace(/[._-]+/g, ' ').trim();
+    return h ? h.replace(/\b\w/g, ch => ch.toUpperCase()) : c.name;
+  }
+  return nameFromDomain(c.input_url) || c.name;
 }
 
 async function processCompany(c) {
   console.log(`\n▶ ${c.name || c.input_url}`);
   const issues = [];
-  const links = { ...(c.links || {}) };
+  // Stored links, cleaned: builder/template accounts dropped, video and admin links turned into the profile
+  const links = {};
+  for (const [k, u] of Object.entries(c.links || {})) { const clean = cleanProfileLink(u); if (clean) links[k] = clean; }
   const input = normalize(c.input_url);
   if (input.kind && input.kind !== 'website' && !links[input.kind]) links[input.kind] = input.url;
   let website = c.website || (input.kind === 'website' ? input.url : null);
@@ -100,12 +122,14 @@ async function processCompany(c) {
   await upd(c.id, { stage: 1 });
 
   // 1. Platform links from the site (links the team added win)
-  if (site) for (const [k, u] of Object.entries(site.links)) if (!links[k] && isProfileLink(u)) links[k] = u;
+  if (site) for (const [k, u] of Object.entries(site.links)) if (!links[k]) links[k] = u;
   await upd(c.id, { stage: 2, links });
 
   // 2. Social profiles: followers, and name/bio/logo/website for the fallback
   const followers = {}, profiles = {}, done = new Set();
-  await fetchProfiles(links, done, profiles, followers);
+  const refs = () => [site && site.name, website && domainCore(website), domainCore(c.input_url), c.overrides && c.overrides.name,
+    input.kind && input.kind !== 'website' ? handleOf(input.url) : null, !isGenericName(c.name) ? c.name : null].filter(Boolean);
+  await fetchProfiles(links, done, profiles, followers, refs);
 
   // No usable website? Look for one on the profiles and read it
   if (!site) {
@@ -115,8 +139,8 @@ async function processCompany(c) {
       const s2 = await readSite(found);
       if (!s2.error) {
         site = s2; website = normalize(found).url; siteProblem = null;
-        for (const [k, u] of Object.entries(site.links)) if (!links[k] && isProfileLink(u)) links[k] = u;
-        await fetchProfiles(links, done, profiles, followers);
+        for (const [k, u] of Object.entries(site.links)) if (!links[k]) links[k] = u;
+        await fetchProfiles(links, done, profiles, followers, refs);
       }
     }
   }
@@ -134,8 +158,12 @@ async function processCompany(c) {
   if (!description) { const b = firstProfile('bio'); if (b) { description = b.v; descriptionSource = PROFILE_SOURCE[b.p]; } }
   let name = site && site.name;
   if (!name) { const n = firstProfile('name'); name = n ? n.v : null; }
-  let logo = site && site.logoQuality === 'good' ? site.logo : null;
-  if (!logo) { const a = firstProfile('avatar'); logo = a ? a.v : (site ? site.logo : null); }
+  // Logo: the first site logo that really loads, then a profile picture, then the site's small icon
+  let logo = null, logoTone = null, logoFrom = '-';
+  const pick = async (cands, from) => { if (logo) return; const g = await firstGoodLogo(cands); if (g) { logo = g.url; logoTone = g.tone; logoFrom = from; } };
+  if (site) await pick(site.logoCandidates.filter(x => x.quality === 'good'), 'site');
+  await pick(PROFILE_ORDER.map(p => profiles[p] && profiles[p].avatar).filter(Boolean), 'profile');
+  if (site) await pick(site.logoCandidates.filter(x => x.quality !== 'good'), 'site icon');
 
   // 3. Sortlist
   let sl = null;
@@ -157,9 +185,9 @@ async function processCompany(c) {
   const status = !description && !total ? 'failed' : (description && !issues.includes('followers_blocked')) ? 'done' : 'partial';
 
   await upd(c.id, {
-    name: name || (isGenericName(c.name) ? nameFromDomain(website || c.input_url) || c.name : c.name), website: website || null, domain: website ? hostOf(website) : c.domain,
+    name: name || fallbackName(c, website, input), website: website || null, domain: website ? hostOf(website) : c.domain,
     description: description || null, description_source: descriptionSource || null,
-    logo_url: logo || null,
+    logo_url: logo || null, logo_tone: logoTone,
     countries: site && site.countries.length ? site.countries : c.countries,
     services: site && site.services && site.services.length ? site.services : (site ? [] : c.services),
     about: site ? site.about : null, about_source: site ? site.aboutSource : null,
@@ -170,7 +198,7 @@ async function processCompany(c) {
     category: category === 'none' ? c.category : category,
     status, stage: status === 'done' ? 5 : !description ? 0 : issues.includes('followers_blocked') ? 2 : 5, issues, fetched_at: new Date().toISOString()
   });
-  console.log(`  → ${status}${issues.length ? ' (' + issues.join(', ') + ')' : ''} · ${name || '?'} · desc from ${descriptionSource || '-'} · logo ${logo ? (site && logo === site.logo ? 'site' : 'profile') : '-'}`);
+  console.log(`  → ${status}${issues.length ? ' (' + issues.join(', ') + ')' : ''} · ${name || fallbackName(c, website, input) || '?'} · desc from ${descriptionSource || '-'} · logo ${logoFrom}${logoTone ? ' (' + logoTone + ')' : ''}`);
 }
 
 const list = await targets();

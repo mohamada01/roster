@@ -75,3 +75,35 @@ test('classifies from site text', () => {
   assert.equal(classifyByKeywords('Independent branding studio building brand identity and packaging.', ''), 'branding');
   assert.equal(classifyByKeywords('', ''), 'none');
 });
+
+import { servicesFromPage, aboutFromPage } from '../site.mjs';
+
+const OGBEES = `<html><head><title>OG Bees</title></head><body>
+<nav><a href="/">Home</a><a href="/about-us">About</a><a href="/our-work">Work</a></nav>
+<h2>UGC Ads That Deliver More Clicks, Lower Costs, &amp; Real Results!</h2>
+<p>Your products deserve the spotlight! The right UGC strategy boosts your brand, drives conversions, and builds trust!</p>
+<section><h3>Packages &amp; Services</h3><div><h4>UGC Video Ads</h4><h4>Product Photography</h4><h4>Creator Matching</h4><a>Get started</a></div></section>
+<footer><a href="mailto:support@ogbees.com">Email</a><a href="https://ogbees.com/instagram">IG</a><a href="https://ogbees.com/linkedin">in</a>
+<a href="https://www.facebook.com/groups/1097866811408456">group</a>
+<a href="https://api.whatsapp.com/send/?phone=%2B201274632470&type=phone_number">WhatsApp</a></footer></body></html>`;
+
+test('site without meta description: lead text, internal social links, contact, services', () => {
+  const s = parseSite(OGBEES, 'https://ogbees.com/');
+  assert.equal(s.description, null);
+  assert.equal(s.heroText, 'UGC Ads That Deliver More Clicks, Lower Costs, & Real Results! Your products deserve the spotlight! The right UGC strategy boosts your brand, drives conversions, and builds trust!');
+  assert.equal(s.internalSocial.instagram, 'https://ogbees.com/instagram');
+  assert.equal(s.internalSocial.linkedin, 'https://ogbees.com/linkedin');
+  assert.equal(s.links.facebook, undefined, 'facebook groups are not company profiles');
+  assert.deepEqual(s.contact.emails, ['support@ogbees.com']);
+  assert.equal(s.contact.whatsapp, '+201274632470');
+  assert.deepEqual(s.countries, ['EG']);
+  assert.equal(s.aboutUrl, 'https://ogbees.com/about-us');
+  assert.deepEqual(s.services, ['UGC Video Ads', 'Product Photography', 'Creator Matching']);
+});
+
+test('services page and about page extraction', () => {
+  const svc = servicesFromPage('<main><h1>Our Services</h1><h2>Brand Strategy</h2><p>x</p><h2>Social Media Management</h2><h2>Video Production</h2><h2>Contact</h2><h2>Why choose us?</h2></main>');
+  assert.deepEqual(svc, ['Brand Strategy', 'Social Media Management', 'Video Production']);
+  const about = aboutFromPage('<main><p>Short.</p><p>We are a creative studio founded in Cairo that helps ambitious brands tell clearer stories across every channel.</p></main><footer><p>© 2026 All rights reserved and some more words to pass the length check here.</p></footer>');
+  assert.equal(about, 'We are a creative studio founded in Cairo that helps ambitious brands tell clearer stories across every channel.');
+});

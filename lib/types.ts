@@ -9,7 +9,9 @@ export type Row = {
   growth_30d: number | null; spark: number[];
   sortlist_url: string | null; sortlist_rating: number | null; sortlist_reviews: number | null;
   status: Status; stage: number; issues: string[];
-  overrides: { name?: string; category?: string; description?: string; followers?: Record<string, number> };
+  about?: string | null; about_source?: string | null;
+  contact?: { emails?: string[]; phones?: string[]; whatsapp?: string | null; address?: string | null };
+  overrides: { name?: string; category?: string; description?: string; services?: string[]; followers?: Record<string, number> };
   hidden: boolean; created_by: string | null; created_at: string; fetched_at: string | null; run_at: string | null;
   sample?: boolean; demo?: boolean; // demo mode only
 };
@@ -20,7 +22,7 @@ export type Co = Row & {
   total: number;
   edited: string[];
   display: string;                     // name to show
-  scraped: { name: string | null; category: string; description: string | null };
+  scraped: { name: string | null; category: string; description: string | null; services: string[] };
 };
 
 export function view(r: Row): Co {
@@ -29,15 +31,15 @@ export function view(r: Row): Co {
   const manualFol: string[] = [];
   Object.entries(o.followers || {}).forEach(([k, v]) => { if (v != null && !Number.isNaN(+v)) { fol[k] = +v; manualFol.push(k); } });
   const total = Object.values(fol).reduce((a: number, b) => a + (b || 0), 0);
-  const edited = (['name', 'category', 'description'] as const).filter(k => o[k] != null);
+  const edited = (['name', 'category', 'description', 'services'] as const).filter(k => o[k] != null);
   const name = o.name ?? r.name ?? r.domain ?? r.input_url;
   return {
     ...r, name, display: name,
-    scraped: { name: r.name, category: r.category || 'none', description: r.description },
+    scraped: { name: r.name, category: r.category || 'none', description: r.description, services: r.services || [] },
     category: o.category ?? r.category ?? 'none',
     description: o.description ?? r.description,
     fol, manualFol, total, edited: edited as string[],
-    countries: r.countries || [], services: r.services || [], links: r.links || {}, spark: r.spark || [], issues: r.issues || []
+    countries: r.countries || [], services: o.services ?? r.services ?? [], contact: r.contact || {}, links: r.links || {}, spark: r.spark || [], issues: r.issues || []
   };
 }
 

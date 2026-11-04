@@ -1,8 +1,9 @@
 // Reads a company website: name, verbatim description, logo, platform links,
-// country hints and founding year. Falls back to a real browser for sites
-// that build their content with JavaScript.
+// services, About text, contact details, country hints and founding year.
+// Falls back to a real browser for sites that build their content with JavaScript.
+// Every text field is copied verbatim from the site; nothing is rewritten.
 import * as cheerio from 'cheerio';
-import { get, isProfileLink, platformOf } from './lib.mjs';
+import { get, isProfileLink, platformOf, PLATFORMS } from './lib.mjs';
 
 const COUNTRY_WORDS = [
   [/\b(cairo|egypt|alexandria|giza)\b|القاهرة|مصر/i, 'EG'],
@@ -19,8 +20,15 @@ const COUNTRY_WORDS = [
   [/\b(new york|los angeles|usa|united states)\b/i, 'US']
 ];
 const ISO2 = { egypt: 'EG', 'saudi arabia': 'SA', 'united arab emirates': 'AE', uae: 'AE', 'united kingdom': 'GB', uk: 'GB', qatar: 'QA', kuwait: 'KW', jordan: 'JO', lebanon: 'LB', bahrain: 'BH', oman: 'OM', morocco: 'MA', 'united states': 'US', usa: 'US' };
+const DIAL = [['20', 'EG'], ['966', 'SA'], ['971', 'AE'], ['44', 'GB'], ['974', 'QA'], ['965', 'KW'], ['962', 'JO'], ['961', 'LB'], ['973', 'BH'], ['968', 'OM'], ['212', 'MA']];
+
+const ABOUT_PATH = /^\/(?:[a-z]{2}\/)?(about|about-us|who-we-are|our-story|story|company|agency|من-نحن)\/?$/i;
+const SERVICES_PATH = /^\/(?:[a-z]{2}\/)?(services|our-services|what-we-do|solutions|capabilities|expertise|packages|marketing-solutions|خدمات|خدماتنا)\/?$/i;
+const SERVICES_HEAD = /services|what we do|our expertise|capabilities|solutions|packages|خدمات|خدماتنا/i;
+const NOT_SERVICE = /^(home|about|contact|get started|read more|learn more|view all|see all|faq|faqs|testimonials?|clients?|our clients|our work|work|portfolio|blog|careers?|let'?s talk|subscribe|follow us|menu|services|our services|what we do|packages & services|feedback|login|sign ?up|privacy|terms|\d+)$/i;
 
 function abs(href, base) { try { return new URL(href, base).href; } catch { return null; } }
+const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
 
 function jsonLd($) {
   const out = [];
@@ -40,16 +48,83 @@ function cleanTitle(t) {
   return parts[0] || t.trim();
 }
 
+function uniqServices(list) {
+  const seen = new Set(), out = [];
+  for (const raw of list) {
+    const s = clean(raw).replace(/[:.→→]+$/, '').trim();
+    if (s.length < 3 || s.length > 70 || NOT_SERVICE.test(s) || s.split(' ').length > 9) continue;
+    if (/[?!]$/.test(s)) continue;
+    const k = s.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k); out.push(s);
+    if (out.length >= 12) break;
+  }
+  return out;
+}
+
+/** Services listed on a page: items inside a section whose heading says "services". */
+export function servicesFromSections($) {
+  const found = [];
+  $('h1,h2,h3,h4,h5,h6').each((_, el) => {
+    if (!SERVICES_HEAD.test($(el).text()) || $(el).text().length > 60) return;
+    let box = $(el).parent();
+    for (let i = 0; i < 4 && box.length && box.text().length < 120; i++) box = box.parent();
+    if (!box.length || box.text().length > 6000) return;
+    box.find('h2,h3,h4,h5,h6,li,strong,b,dt').each((__, it) => { if (it !== el) found.push($(it).text()); });
+  });
+  return uniqServices(found);
+}
+
+/** Services from a dedicated services page: its section headings. */
+export function servicesFromPage(html) {
+  const $ = cheerio.load(html);
+  $('header,footer,nav,script,style,noscript').remove();
+  const fromSections = servicesFromSections($);
+  if (fromSections.length >= 3) return fromSections;
+  const heads = [];
+  $('h2,h3,h4').each((_, el) => heads.push($(el).text()));
+  return uniqServices(heads);
+}
+
+/** First substantial paragraphs of an About page, verbatim. */
+export function aboutFromPage(html) {
+  const $ = cheerio.load(html);
+  $('header,footer,nav,script,style,noscript,form').remove();
+  const paras = [];
+  $('main p, article p, section p, p').each((_, el) => {
+    const t = clean($(el).text());
+    if (t.length >= 80 && !paras.includes(t) && !/cookie|privacy|©|all rights reserved/i.test(t)) paras.push(t);
+  });
+  const out = [];
+  let len = 0;
+  for (const p of paras) { if (len + p.length > 900 && out.length) break; out.push(p); len += p.length; if (out.length >= 3) break; }
+  return out.length ? out.join('\n\n') : null;
+}
+
 /** Pure parser: HTML string -> extracted fields. Exported for tests. */
 export function parseSite(html, pageUrl) {
   const $ = cheerio.load(html);
   const meta = n => $(`meta[name="${n}"]`).attr('content') || $(`meta[property="${n}"]`).attr('content') || null;
   const ld = jsonLd($);
   const org = ld.find(o => /Organization|Corporation|LocalBusiness|ProfessionalService|AdvertisingAgency/i.test([].concat(o['@type'] || []).join(' '))) || {};
+  const origin = (() => { try { return new URL(pageUrl).origin; } catch { return ''; } })();
 
-  const description = (meta('description') || meta('og:description') || meta('twitter:description') || org.description || '').trim() || null;
-  const descriptionSource = meta('description') ? 'meta description' : meta('og:description') ? 'og:description' : meta('twitter:description') ? 'twitter:description' : org.description ? 'structured data' : null;
-  const name = (meta('og:site_name') || (typeof org.name === 'string' ? org.name : null) || cleanTitle($('title').first().text()) || '').trim() || null;
+  let description = clean(meta('description') || meta('og:description') || meta('twitter:description') || org.description || '') || null;
+  let descriptionSource = meta('description') ? 'meta description' : meta('og:description') ? 'og:description' : meta('twitter:description') ? 'twitter:description' : org.description ? 'structured data' : null;
+
+  // Homepage lead text, used when there is no description: main heading + first paragraph, verbatim
+  let heroText = null;
+  {
+    const $b = cheerio.load(html); $b('header,nav,script,style,noscript').remove();
+    const h = $b('h1').first().length ? $b('h1').first() : $b('h2').first();
+    const headText = clean(h.text());
+    let para = null;
+    $b('p').each((_, el) => { const t = clean($b(el).text()); if (!para && t.length >= 60) para = t; });
+    if (headText && para) heroText = `${headText} ${para}`;
+    else heroText = para || null;
+  }
+
+  const name = clean(meta('og:site_name') || (typeof org.name === 'string' ? org.name : null) || cleanTitle($('title').first().text())) || null;
 
   // Logo: structured data, then the largest icon, then og:image
   let logo = typeof org.logo === 'string' ? org.logo : org.logo && org.logo.url;
@@ -60,7 +135,7 @@ export function parseSite(html, pageUrl) {
       if (!/icon/.test(rel)) return;
       const size = parseInt(($(el).attr('sizes') || '').split('x')[0], 10) || (rel.includes('apple') ? 180 : 32);
       const href = $(el).attr('href');
-      if (href && !/\.svg($|\?)/i.test(href) || rel.includes('apple')) icons.push({ href, size });
+      if ((href && !/\.svg($|\?)/i.test(href)) || rel.includes('apple')) icons.push({ href, size });
     });
     icons.sort((a, b) => b.size - a.size);
     logo = icons[0] && icons[0].href;
@@ -68,24 +143,57 @@ export function parseSite(html, pageUrl) {
   if (!logo) logo = meta('msapplication-TileImage') || meta('og:image') || '/favicon.ico';
   logo = abs(logo, pageUrl);
 
-  // Platform links: first profile link per platform, plus structured data sameAs
+  // Links: platform profiles, internal redirects like /instagram, About and Services pages, contact
   const links = {};
+  const internalSocial = {};
+  let aboutUrl = null, servicesUrl = null;
+  const emails = new Set(), phones = new Set();
+  let whatsapp = null;
   const consider = href => {
+    if (!href) return;
+    if (/^mailto:/i.test(href)) { const e = href.slice(7).split('?')[0].trim().toLowerCase(); if (/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(e)) emails.add(e); return; }
+    if (/^tel:/i.test(href)) { const p = href.slice(4).replace(/[^\d+]/g, ''); if (p.replace(/\D/g, '').length >= 7) phones.add(p); return; }
     const u = abs(href, pageUrl);
-    if (!u || !isProfileLink(u)) return;
-    const k = platformOf(u);
-    if (!links[k]) links[k] = u.split('?')[0].replace(/\/+$/, '/') ;
+    if (!u) return;
+    const wa = u.match(/(?:wa\.me\/|api\.whatsapp\.com\/send\/?\?(?:.*&)?phone=)(%2B|\+)?(\d{7,15})/i);
+    if (wa) { whatsapp = whatsapp || '+' + wa[2]; return; }
+    if (isProfileLink(u)) { const k = platformOf(u); if (!links[k]) links[k] = u.split('?')[0]; return; }
+    try {
+      const x = new URL(u);
+      if (x.origin !== origin) return;
+      const seg = x.pathname.replace(/\/+$/, '').toLowerCase();
+      const first = seg.split('/').filter(Boolean)[0] || '';
+      const alias = { twitter: 'x', fb: 'facebook', ig: 'instagram', insta: 'instagram' }[first] || first;
+      if (PLATFORMS.includes(alias) && seg.split('/').filter(Boolean).length === 1) internalSocial[alias] = internalSocial[alias] || u;
+      if (!aboutUrl && ABOUT_PATH.test(x.pathname)) aboutUrl = u;
+      if (!servicesUrl && SERVICES_PATH.test(x.pathname)) servicesUrl = u;
+    } catch { /* skip */ }
   };
   [].concat(org.sameAs || []).forEach(consider);
   $('a[href]').each((_, el) => consider($(el).attr('href')));
+  [].concat(org.telephone || []).forEach(p => phones.add(String(p).replace(/[^\d+]/g, '')));
+  [].concat(org.email || []).forEach(e => emails.add(String(e).toLowerCase()));
 
-  // Country hints: structured address, then description/title/footer text only
+  // Address
+  let address = null;
+  const addr = [].concat(org.address || [])[0];
+  if (addr && typeof addr === 'object') address = clean([addr.streetAddress, addr.addressLocality, addr.addressRegion, typeof addr.addressCountry === 'string' ? addr.addressCountry : addr.addressCountry && addr.addressCountry.name].filter(Boolean).join(', ')) || null;
+  else if (typeof addr === 'string') address = clean(addr);
+  if (!address) { const a = clean($('address').first().text()); if (a && a.length <= 200) address = a; }
+
+  // Country hints: structured address, phone codes, then description/title/footer/address text only
   const countries = new Set();
   [].concat(org.address || []).forEach(a => {
     const c = a && (typeof a.addressCountry === 'string' ? a.addressCountry : a.addressCountry && a.addressCountry.name);
     if (c) countries.add(c.length === 2 ? c.toUpperCase() : (ISO2[c.toLowerCase()] || null));
   });
-  const hintText = [description, $('title').text(), $('footer').text().slice(0, 3000), $('address').text()].join(' ');
+  [...phones, whatsapp].filter(Boolean).forEach(p => {
+    const d = String(p).replace(/^\+|^00/, '');
+    if (!/^\+|^00/.test(String(p))) return;
+    const hit = DIAL.find(([code]) => d.startsWith(code));
+    if (hit) countries.add(hit[1]);
+  });
+  const hintText = [description, $('title').text(), $('footer').text().slice(0, 3000), address].join(' ');
   COUNTRY_WORDS.forEach(([re, code]) => { if (re.test(hintText)) countries.add(code); });
   countries.delete(null);
 
@@ -94,20 +202,23 @@ export function parseSite(html, pageUrl) {
   const fd = org.foundingDate && String(org.foundingDate).match(/(19|20)\d{2}/);
   if (fd) founded = +fd[0];
   const bodyText = $('body').text().replace(/\s+/g, ' ');
-  if (!founded) {
-    const m = bodyText.match(/\b(?:since|founded(?: in)?|established(?: in)?|est\.?)\s*((?:19|20)\d{2})\b/i) || bodyText.match(/تأسست(?: عام| في)?\s*((?:19|20)\d{2})/);
-    if (m) founded = +m[1];
-  }
+  if (!founded) founded = foundedIn(bodyText);
 
-  // Text used only for choosing a category, never shown
-  const classifyText = [name, description, $('title').text(), $('h1,h2,h3').text(), $('nav').text()].join(' ').replace(/\s+/g, ' ').slice(0, 4000);
+  const services = servicesFromSections($);
+  const classifyText = [name, description, heroText, $('title').text(), $('h1,h2,h3').text(), $('nav').text(), services.join(', ')].join(' ').replace(/\s+/g, ' ').slice(0, 4000);
 
   return {
-    name, description, descriptionSource, logo, links,
-    sortlist: links.sortlist || null,
+    name, description, descriptionSource, heroText, logo, links, internalSocial,
+    sortlist: links.sortlist || null, aboutUrl, servicesUrl, services,
+    contact: { emails: [...emails].slice(0, 3), phones: [...phones].slice(0, 3), whatsapp, address },
     countries: [...countries], founded, classifyText,
     bodyLength: bodyText.trim().length
   };
+}
+
+export function foundedIn(text) {
+  const m = String(text || '').match(/\b(?:since|founded(?: in)?|established(?: in)?|est\.?)\s*((?:19|20)\d{2})\b/i) || String(text || '').match(/تأسست(?: عام| في)?\s*((?:19|20)\d{2})/);
+  return m ? +m[1] : null;
 }
 
 let browserPromise = null;
@@ -124,12 +235,40 @@ export async function closeBrowser() {
 
 async function render(url) {
   const b = await browser();
-  const page = await b.newPage({ userAgent: undefined });
+  const page = await b.newPage();
   try {
     await page.goto(url, { waitUntil: 'networkidle', timeout: 35000 }).catch(() => page.waitForTimeout(3000));
-    await page.waitForTimeout(1500);
+    // Scroll once so lazy sections (services, footers) load
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)).catch(() => {});
+    await page.waitForTimeout(2000);
     return { html: await page.content(), url: page.url() };
   } finally { await page.close(); }
+}
+
+/** Where an internal link such as /instagram ends up, following server and JavaScript redirects. */
+async function resolveRedirect(url) {
+  const r = await get(url);
+  if (r.url && platformOf(r.url)) return r.url;
+  try {
+    const b = await browser();
+    const ctx = await b.newContext();
+    const page = await ctx.newPage();
+    let target = null;
+    ctx.on('page', p => { target = target || p.url(); });
+    page.on('framenavigated', f => { if (f === page.mainFrame() && platformOf(f.url())) target = target || f.url(); });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
+    await page.waitForTimeout(3000);
+    target = target || page.url();
+    await ctx.close();
+    return platformOf(target) ? target : null;
+  } catch { return null; }
+}
+
+async function fetchHtml(url) {
+  const r = await get(url);
+  const thin = !r.ok || cheerio.load(r.text || '')('body').text().replace(/\s+/g, ' ').trim().length < 400;
+  if (!thin) return r.text;
+  try { return (await render(url)).html; } catch { return r.ok ? r.text : null; }
 }
 
 /** Fetch + parse a website. Returns parsed fields, or { error } */
@@ -138,15 +277,47 @@ export async function readSite(url) {
   let parsed = res.ok && res.text ? parseSite(res.text, res.url || url) : null;
   let rendered = false;
   // Thin or failed page: try a real browser
-  if (!parsed || !parsed.description || parsed.bodyLength < 400) {
+  if (!parsed || !parsed.description || parsed.bodyLength < 400 || !Object.keys(parsed.links).length) {
     try {
       const r = await render(url);
       const p2 = parseSite(r.html, r.url);
-      if (!parsed || (p2.description && !parsed.description) || p2.bodyLength > parsed.bodyLength) { parsed = p2; rendered = true; }
+      if (!parsed || p2.bodyLength > parsed.bodyLength || (p2.description && !parsed.description)) { parsed = { ...p2, description: p2.description || parsed?.description, descriptionSource: p2.description ? p2.descriptionSource : parsed?.descriptionSource }; rendered = true; }
+      else for (const [k, v] of Object.entries(p2.links)) if (!parsed.links[k]) parsed.links[k] = v;
     } catch (e) {
       if (!parsed) return { error: 'site_unreachable', detail: String(e.message || e) };
     }
   }
   if (!parsed) return { error: 'site_unreachable' };
-  return { ...parsed, finalUrl: res.url || url, rendered };
+
+  // Internal redirect links (example.com/instagram) -> the real profile
+  for (const [k, u] of Object.entries(parsed.internalSocial || {})) {
+    if (parsed.links[k]) continue;
+    const real = await resolveRedirect(u);
+    if (real && isProfileLink(real)) parsed.links[k] = real.split('?')[0];
+  }
+
+  // About page: verbatim paragraphs
+  let about = null;
+  if (parsed.aboutUrl) {
+    const html = await fetchHtml(parsed.aboutUrl);
+    if (html) {
+      about = aboutFromPage(html);
+      if (!parsed.founded) parsed.founded = foundedIn(cheerio.load(html)('body').text());
+      if (about) parsed.classifyText += ' ' + about.slice(0, 1500);
+    }
+  }
+
+  // Services page, if the homepage didn't list them
+  let services = parsed.services;
+  if (parsed.servicesUrl && services.length < 3) {
+    const html = await fetchHtml(parsed.servicesUrl);
+    if (html) { const s = servicesFromPage(html); if (s.length > services.length) services = s; }
+  }
+
+  // Description fallback: About page first paragraph, then homepage lead text
+  let description = parsed.description, descriptionSource = parsed.descriptionSource;
+  if (!description && about) { description = about.split('\n\n')[0]; descriptionSource = 'about page'; }
+  if (!description && parsed.heroText) { description = parsed.heroText; descriptionSource = 'homepage text'; }
+
+  return { ...parsed, description, descriptionSource, about, aboutSource: about ? parsed.aboutUrl : null, services, finalUrl: res.url || url, rendered };
 }

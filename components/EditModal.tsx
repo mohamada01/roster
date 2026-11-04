@@ -15,6 +15,7 @@ export default function EditModal({ c, close }: { c: Co; close: () => void }) {
   const [hidden, setHidden] = useState(c.hidden);
   const [fol, setFol] = useState<Record<string, string>>(Object.fromEntries(PLAT_KEYS.map(k => [k, o.followers?.[k] != null ? String(o.followers[k]) : ''])));
   const [extra, setExtra] = useState('');
+  const [svc, setSvc] = useState((o.services ?? c.services ?? []).join('\n'));
   const [busy, setBusy] = useState(false);
 
   const save = async () => {
@@ -24,6 +25,8 @@ export default function EditModal({ c, close }: { c: Co; close: () => void }) {
     if (name.trim() && name.trim() !== (s.name ?? '')) ov.name = name.trim();
     if (cat !== s.category) ov.category = cat;
     if (desc.trim() && desc.trim() !== (s.description ?? '')) ov.description = desc.trim();
+    const svcList = svc.split('\n').map(x => x.trim()).filter(Boolean);
+    if (svcList.join('\n') !== (s.services || []).join('\n')) ov.services = svcList;
     const f = Object.fromEntries(Object.entries(fol).filter(([, v]) => v.trim() !== '' && !isNaN(+v)).map(([k, v]) => [k, Math.round(+v)]));
     if (Object.keys(f).length) ov.followers = f;
     const links = { ...c.links };
@@ -58,6 +61,7 @@ export default function EditModal({ c, close }: { c: Co; close: () => void }) {
             <select className="select" id="edCat" style={{ width: '100%' }} value={cat} onChange={e => setCat(e.target.value)}>
               {Object.keys(CATS).map(k => <option key={k} value={k}>{CATS[k][lang]}</option>)}</select></div>
           <div className="field"><label htmlFor="edDesc">{t.fDesc}</label><textarea id="edDesc" value={desc} onChange={e => setDesc(e.target.value)} /><span className="note">{t.fDescNote}</span></div>
+          <div className="field"><label htmlFor="edSvc">{t.fServices}</label><textarea id="edSvc" style={{ minHeight: 96 }} value={svc} onChange={e => setSvc(e.target.value)} /><span className="note">{t.fServicesNote}</span></div>
           {fields.length > 0 && <div className="field"><label>{t.fFolEdit}</label>
             <div className="fol-grid">{fields.map(k => (
               <label key={k} className="fol-in"><span className="pi">{PLATS[k].ab}</span><span className="fol-n">{PLATS[k].n}</span>

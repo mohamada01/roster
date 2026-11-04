@@ -66,6 +66,11 @@ create table if not exists companies (
 );
 create index if not exists companies_status_idx on companies (status);
 
+-- Added later: About text, contact details (safe to run on an existing database)
+alter table companies add column if not exists about text;
+alter table companies add column if not exists about_source text;
+alter table companies add column if not exists contact jsonb not null default '{}';
+
 -- Daily follower history, used for growth and charts
 create table if not exists snapshots (
   company_id uuid not null references companies(id) on delete cascade,

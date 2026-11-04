@@ -526,3 +526,10 @@ a.st{text-decoration:none}
 @media (max-width:640px){.dir-search{width:100%;order:9}}
 .search-trigger svg{width:17px;height:17px;flex:none}
 .pal-item .pi-ico svg{width:15px;height:15px}
+
+.about-p{margin:0 0 10px;font-size:14.5px;line-height:1.75;color:var(--muted);max-width:68ch;direction:ltr;text-align:left;unicode-bidi:isolate}
+.about-p:last-child{margin-bottom:0}
+.kv.contact dd{word-break:break-word;direction:ltr;unicode-bidi:isolate}
+[dir="rtl"] .kv.contact dd{text-align:left}
+.kv.contact a{color:var(--fg);text-decoration:none}
+.kv.contact a:hover{color:var(--accent)}

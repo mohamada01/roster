@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useApp } from './AppProvider';
 import { Growth, Ic, Logo, Pills, StarIcon } from './Bits';
@@ -60,6 +60,34 @@ export default function Company({ slug }: { slug: string }) {
     </div></section>
   );
 
+  // About: verbatim description, About-page text and services
+  const hasAbout = !!(c.description || c.about || c.services.length);
+  const aboutP = hasAbout && (
+    <section className="panel"><h2>{t.about}</h2>
+      {c.description && <p className="quote" lang="en">{c.description}</p>}
+      {!c.sample && c.description && <div className="src"><i />{c.edited.includes('description') ? t.edited : t.descSrc(t.srcName[c.description_source || 'meta description'] || c.description_source || '', c.domain || '')}</div>}
+      {c.about && c.about.trim() !== (c.description || '').trim() && <div className="svc-wrap"><small>{t.aboutMore}</small>
+        {c.about.split('\n\n').map((p, i) => <p key={i} className="about-p" lang="en">{p}</p>)}</div>}
+      {c.services.length > 0 && <div className="svc-wrap"><small>{c.edited.includes('services') ? t.servicesT : t.services}</small>
+        <div className="svc">{c.services.map(s => <span key={s} className="tag" lang="en">{s}</span>)}</div></div>}
+    </section>
+  );
+
+  // Contact details found on the site
+  const ct = c.contact || {};
+  const rows: [string, React.ReactNode][] = [];
+  if (site) rows.push([t.websiteL, <a key="w" href={site} target="_blank" rel="noopener noreferrer">{c.domain || site}</a>]);
+  (ct.emails || []).forEach(e => rows.push([t.emailL, <a key={e} href={'mailto:' + e}>{e}</a>]));
+  (ct.phones || []).forEach(p => rows.push([t.phoneL, <a key={p} href={'tel:' + p} className="num">{p}</a>]));
+  if (ct.whatsapp) rows.push([t.whatsappL, <a key="wa" href={'https://wa.me/' + ct.whatsapp.replace(/\D/g, '')} target="_blank" rel="noopener noreferrer" className="num">{ct.whatsapp}</a>]);
+  if (ct.address) rows.push([t.addressL, <span key="ad" lang="en">{ct.address}</span>]);
+  const contactP = !c.sample && (
+    <section className="panel"><h2>{t.contactT}</h2>
+      {rows.length ? <dl className="kv contact">{rows.map(([l, v], i) => <Fragment key={i}><dt>{l}</dt><dd>{v}</dd></Fragment>)}</dl>
+        : <p className="hint" style={{ margin: 0 }}>{t.noContact}</p>}
+    </section>
+  );
+
   let main: React.ReactNode, side: React.ReactNode;
   if (inc) {
     const got = sources.filter(r => r[2] === 'ok'), miss = sources.filter(r => r[2] === 'miss');
@@ -76,16 +104,13 @@ export default function Company({ slug }: { slug: string }) {
           <button className="btn primary" type="button" disabled={c.status === 'running' || c.status === 'queued'} onClick={() => retry(c.id)}>{Ic.re}<span>{t.retry}</span></button>
           <Link className="btn" href="/dashboard">{t.openDash}</Link></div>}
       </section>
+      {aboutP}
       {platP}
     </>;
-    side = <>{infoP}{sourcesP}</>;
+    side = <>{contactP}{infoP}{sourcesP}</>;
   } else {
     main = <>
-      <section className="panel"><h2>{t.about}</h2>
-        {c.description && <p className="quote" lang="en">{c.description}</p>}
-        {!c.sample && c.description && <div className="src"><i />{c.edited.includes('description') ? t.edited : t.descSrc(c.description_source || 'meta description', c.domain || '')}</div>}
-        {c.services.length > 0 && <div className="svc-wrap"><small>{t.services}</small><div className="svc">{c.services.map(s => <span key={s} className="tag" lang="en">{s}</span>)}</div></div>}
-      </section>
+      {aboutP}
       {c.total > 0 && <Chart c={c} />}
       {platP}
     </>;
@@ -100,7 +125,7 @@ export default function Company({ slug }: { slug: string }) {
             {(c.sortlist_url || c.links.sortlist) && <a className="link" href={c.sortlist_url || c.links.sortlist} target="_blank" rel="noopener noreferrer">{t.slProfile}</a>}</div>
         </> : <p style={{ margin: 0, fontSize: 13, color: 'var(--muted)' }}>{t.noSl}</p>}</div>
       </section>
-      {infoP}{sourcesP}{simP}
+      {contactP}{infoP}{sourcesP}{simP}
     </>;
   }
 

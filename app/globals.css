@@ -533,3 +533,20 @@ a.st{text-decoration:none}
 [dir="rtl"] .kv.contact dd{text-align:left}
 .kv.contact a{color:var(--fg);text-decoration:none}
 .kv.contact a:hover{color:var(--accent)}
+
+/* Text alignment: English blocks use the full panel width so nothing floats */
+.quote,.about-p{max-width:none}
+.quote{font-size:17px}
+/* Meta row: category pill / countries with flags / founding year, three distinct looks */
+.meta-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px}
+.countries{display:inline-flex;flex-wrap:wrap;gap:6px 12px}
+.country{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--fg)}
+.flag{width:18px;height:13px;border-radius:2px;object-fit:cover;box-shadow:0 0 0 1px var(--line-2);flex:none}
+.founded{display:inline-flex;align-items:center;gap:5px;font-size:13px;color:var(--muted)}
+.founded svg{width:14px;height:14px}
+.meta-row .dom{font-size:13px}
+/* Services: a readable two-column list */
+.svc-list{list-style:none;margin:4px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
+.svc-list li{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:10px;background:var(--surface-2);font-size:15px;line-height:1.4;direction:ltr;unicode-bidi:isolate;text-align:left}
+.svc-list li::before{content:"";flex:none;width:7px;height:7px;border-radius:50%;background:var(--accent)}
+.svc-wrap small{font-size:13px}

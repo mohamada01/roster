@@ -2,7 +2,7 @@
 import { Fragment, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useApp } from './AppProvider';
-import { Growth, Ic, Logo, Pills, StarIcon } from './Bits';
+import { Growth, Ic, Logo, MetaRow, Pills, ServiceList, StarIcon } from './Bits';
 import { CATS, ISSUES, PLATS, PLAT_KEYS, countryName } from '@/lib/meta';
 import { Co, isIncomplete } from '@/lib/types';
 import { fmt, fmtDate, fmtShort, handleOf, rel } from '@/lib/util';
@@ -69,7 +69,7 @@ export default function Company({ slug }: { slug: string }) {
       {c.about && c.about.trim() !== (c.description || '').trim() && <div className="svc-wrap"><small>{t.aboutMore}</small>
         {c.about.split('\n\n').map((p, i) => <p key={i} className="about-p" lang="en">{p}</p>)}</div>}
       {c.services.length > 0 && <div className="svc-wrap"><small>{c.edited.includes('services') ? t.servicesT : t.services}</small>
-        <div className="svc">{c.services.map(s => <span key={s} className="tag" lang="en">{s}</span>)}</div></div>}
+        <ServiceList items={c.services} /></div>}
     </section>
   );
 
@@ -134,8 +134,7 @@ export default function Company({ slug }: { slug: string }) {
       <Link className="back" href="/">{Ic.back}{t.back}</Link>
       <section className="d-head"><Logo c={c} />
         <div className="d-title"><h1>{c.display} <Pills c={c} /></h1>
-          <div className="tags"><span className="tag cat">{CATS[c.category]?.[lang]}</span>{c.countries.map(k => <span key={k} className="tag flag">{countryName(k, lang)}</span>)}
-            <span className="dom" style={{ fontSize: 13, direction: 'ltr', unicodeBidi: 'isolate' }}>{site ? <a href={site} target="_blank" rel="noopener noreferrer">{c.domain}</a> : c.domain}</span></div></div>
+          <MetaRow c={c} extra={<span className="dom" style={{ fontSize: 13, direction: 'ltr', unicodeBidi: 'isolate' }}>{site ? <a href={site} target="_blank" rel="noopener noreferrer">{c.domain}</a> : c.domain}</span>} /></div>
         <div className="d-acts">
           <button className="btn" type="button" aria-pressed={sh} onClick={() => toggleFav(c.id)}>{Ic.heart}<span>{sh ? t.remShort : t.addShort}</span></button>
           {!inc && <button className="btn" type="button" aria-pressed={inCmp} onClick={() => toggleCmp(c.id)}>{inCmp ? t.inCompare : t.compare}</button>}

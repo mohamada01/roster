@@ -82,7 +82,7 @@ export default function AppProvider({ children }: { children: React.ReactNode })
       setMember(!!data);
       const f = await s.from('favorites').select('company_id');
       if (f.data) setFavs(new Set(f.data.map((r: any) => r.company_id)));
-    } else { setMember(false); setFavs(new Set()); }
+    } else { setMember(false); setFavs(new Set(ls.get<string[]>('favs', []))); }
     await reload();
     setReady(true);
   }, [reload]);
@@ -190,8 +190,8 @@ export default function AppProvider({ children }: { children: React.ReactNode })
   const toggleFav = (id: string) => {
     const on = !favs.has(id);
     const next = new Set(favs); on ? next.add(id) : next.delete(id); setFavs(next);
-    if (!LIVE) { ls.set('favs', [...next]); return; }
-    if (!email) return;
+    // Visitors without an account keep their shortlist in this browser
+    if (!LIVE || !email) { ls.set('favs', [...next]); return; }
     const s = sb()!;
     on ? s.from('favorites').insert({ company_id: id }).then(() => {}) : s.from('favorites').delete().eq('company_id', id).then(() => {});
   };

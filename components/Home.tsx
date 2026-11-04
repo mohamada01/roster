@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from './AppProvider';
-import { Growth, Ic, Logo, Pills, PlatChips, Rating, Spark } from './Bits';
+import { Growth, Ic, Logo, MetaRow, Pills, PlatChips, Rating, Spark } from './Bits';
 import { usePalette } from './Palette';
 import { CATS, ISSUES, PLATS, PLAT_KEYS, countryName } from '@/lib/meta';
 import { Co, isIncomplete, isPending } from '@/lib/types';
@@ -246,7 +246,7 @@ function Card({ c }: { c: Co }) {
         <div className="c-name"><h2><Link href={'/company/' + c.slug} className="c-link">{c.display}</Link> <Pills c={c} /></h2><div className="dom">{c.domain || c.input_url.replace(/^https?:\/\/(www\.)?/, '')}</div></div>
         <div className="c-acts"><button className="mini" type="button" aria-pressed={sh} title={sh ? t.remShort : t.addShort} aria-label={sh ? t.remShort : t.addShort} onClick={() => toggleFav(c.id)}>{Ic.heart}</button></div>
       </div>
-      <div className="tags"><span className="tag cat">{CATS[c.category]?.[lang]}</span>{c.countries.map(k => <span key={k} className="tag flag">{countryName(k, lang)}</span>)}{c.founded && <span className="tag flag num">{c.founded}</span>}</div>
+      <MetaRow c={c} />
       {inc ? <p className="reason">{(c as any).reason?.[lang] || c.issues.map(i => ISSUES[i]?.[lang]).filter(Boolean)[0] || t.partial}</p>
         : <>{c.description && <p className="desc" lang="en">{c.description}</p>}{!c.sample && c.description && <div className="desc-src">{t.descFrom(c.domain || '')}</div>}</>}
       {!inc && <PlatChips c={c} />}

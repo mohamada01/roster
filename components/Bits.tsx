@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { Co } from '@/lib/types';
-import { PLATS } from '@/lib/meta';
+import { CATS, PLATS, countryName } from '@/lib/meta';
 import { fmt, hue, initials } from '@/lib/util';
 import { useApp } from './AppProvider';
 
@@ -83,3 +83,22 @@ export const Ic = {
   trend: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m4 16 6-6 4 4 6-6" /></svg>,
   globe: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" /></svg>
 };
+
+/** Category pill, then countries with flags, then founding year, each styled differently */
+export function MetaRow({ c, extra }: { c: Co; extra?: React.ReactNode }) {
+  const { t, lang } = useApp();
+  return (
+    <div className="meta-row">
+      <span className="tag cat">{CATS[c.category]?.[lang]}</span>
+      {c.countries.length > 0 && <span className="countries">{c.countries.map(k => (
+        <span key={k} className="country"><img className="flag" src={`https://flagcdn.com/${k.toLowerCase()}.svg`} alt="" width={18} height={13} loading="lazy" />{countryName(k, lang)}</span>
+      ))}</span>}
+      {c.founded && <span className="founded"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M4 10h16M9 3v4M15 3v4" /></svg>{t.since} <span className="num">{c.founded}</span></span>}
+      {extra}
+    </div>
+  );
+}
+
+export function ServiceList({ items }: { items: string[] }) {
+  return <ul className="svc-list">{items.map(s => <li key={s} lang="en">{s}</li>)}</ul>;
+}

@@ -24,18 +24,30 @@ async function upd(id, patch) {
   if (error) console.error('update failed', id, error.message);
 }
 
+// Any database error stops the run with a clear message instead of silently doing nothing
+function must({ data, error }, what) {
+  if (error) {
+    console.error(`\n✖ Could not ${what}: ${error.message}`);
+    if (/invalid api key|jwt|unauthorized|no api key/i.test(error.message + ' ' + (error.code || '')))
+      console.error('  Check the SUPABASE_SECRET_KEY secret: it must be the Supabase secret key (starts with sb_secret_).');
+    process.exit(1);
+  }
+  return data || [];
+}
+
 async function targets() {
-  if (ONLY) return (await sb.from('companies').select('*').eq('id', ONLY)).data || [];
+  must(await sb.from('settings').select('id').limit(1), 'connect to the database');
+  if (ONLY) return must(await sb.from('companies').select('*').eq('id', ONLY), 'read the company');
   // Pick up rows left "running" by a run that was cancelled
   const stale = new Date(Date.now() - 2 * 3600e3).toISOString();
   await sb.from('companies').update({ status: 'queued' }).eq('status', 'running').lt('run_at', stale);
-  const queued = (await sb.from('companies').select('*').eq('status', 'queued').order('created_at')).data || [];
+  const queued = must(await sb.from('companies').select('*').eq('status', 'queued').order('created_at'), 'read queued companies');
   if (MODE === 'queued') return queued;
-  if (MODE === 'all') return (await sb.from('companies').select('*').order('created_at')).data || [];
+  if (MODE === 'all') return must(await sb.from('companies').select('*').order('created_at'), 'read companies');
   const { data: s } = await sb.from('settings').select('refresh_days').eq('id', 1).single();
   const days = (s && s.refresh_days) || 7;
   const cutoff = new Date(Date.now() - (days - 0.25) * 864e5).toISOString();
-  const old = (await sb.from('companies').select('*').neq('status', 'queued').or(`fetched_at.is.null,fetched_at.lt.${cutoff}`)).data || [];
+  const old = must(await sb.from('companies').select('*').neq('status', 'queued').or(`fetched_at.is.null,fetched_at.lt.${cutoff}`), 'read companies due for refresh');
   return [...queued, ...old];
 }
 

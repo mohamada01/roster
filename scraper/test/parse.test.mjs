@@ -115,3 +115,19 @@ test('services ignore forms, menus and questions', () => {
   const s = parseSite(html, 'https://x.com/');
   assert.deepEqual(s.services, ['Social Media Marketing', 'Video Production', 'Website Development']);
 });
+
+test('services from tab buttons in a separate page-builder block (Müller’s pattern)', () => {
+  const html = `<html><body><div class="wrap"><div class="el"><section class="section"><p>02 — What we do</p><h2>Our Services</h2></section></div>
+  <div class="el"><div class="tabs"><button class="svc-tab is-active">01 SOCIAL MEDIA &amp; PR MANAGEMENT</button><button class="svc-tab">02 TV CREATIVE &amp; CAMPAIGNS DEVELOPMENT</button>
+  <button class="svc-tab">03 MEDIA PERFORMANCE &amp; GROWTH</button></div></div>
+  <a class="work-item">01 LARCH CAMPAIGN 2026</a><form><h3>Let's build something</h3></form></div></body></html>`;
+  assert.deepEqual(parseSite(html, 'https://x.com/').services, ['SOCIAL MEDIA & PR MANAGEMENT', 'TV CREATIVE & CAMPAIGNS DEVELOPMENT', 'MEDIA PERFORMANCE & GROWTH']);
+});
+
+test('services from the Services menu dropdown (Stork pattern)', () => {
+  const html = `<html><body><header><nav><ul><li><a href="/">Home</a></li><li><a href="/marketing-solutions/">Services</a><ul class="sub-menu">
+  <li><a href="/a">Strategic Social Media Agency – Marketing &amp; Intelligence</a></li><li><a href="/b">Generative Engine Optimization (GEO)</a></li>
+  <li><a href="/c">Commercial Video Production</a></li><li><a href="/d">Website Development in 2 weeks</a></li></ul></li><li><a href="/blog">Blog</a></li></ul></nav></header>
+  <main><h2>Industries</h2><h3>01. E-Commerce &amp; D2C Scaling</h3></main></body></html>`;
+  assert.deepEqual(parseSite(html, 'https://x.com/').services, ['Strategic Social Media Agency – Marketing & Intelligence', 'Generative Engine Optimization (GEO)', 'Commercial Video Production', 'Website Development in 2 weeks']);
+});

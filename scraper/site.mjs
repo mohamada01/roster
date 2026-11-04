@@ -53,7 +53,8 @@ const NOT_SERVICE_START = /^(let'?s|let’s|have a|tell us|thank you|your |what 
 function uniqServices(list, exclude = new Set()) {
   const seen = new Set(), out = [];
   for (const raw of list) {
-    const s = clean(raw).replace(/[:.→]+$/, '').trim();
+    // Drop list numbering such as "01", "02 —", "3." at the start
+    const s = clean(raw).replace(/^\d{1,2}(?:[.)\-–—:]\s*|\s+)/, '').replace(/[:.→]+$/, '').trim();
     if (s.length < 3 || s.length > 70 || NOT_SERVICE.test(s) || NOT_SERVICE_START.test(s) || s.split(' ').length > 9) continue;
     if (/[?!]/.test(s) || exclude.has(s.toLowerCase())) continue;
     const k = s.toLowerCase();
@@ -74,18 +75,56 @@ function stripChrome($) {
   return navTexts;
 }
 
+/**
+ * Services listed on a page, trying the most reliable patterns first:
+ *  1. the Services dropdown in the site menu
+ *  2. elements the site itself labels as services (class names like "service-item", "svc-tab")
+ *  3. items inside a section whose heading says "services" / "what we do"
+ */
 export function servicesFromSections($in) {
-  const $ = cheerio.load($in.html());
+  const html = $in.html();
+  const $orig = cheerio.load(html);
+
+  // 1. Menu dropdown under a "Services" / "Solutions" item
+  const fromMenu = [];
+  $orig('nav li, header li').each((_, li) => {
+    const top = $orig(li).children('a,button,span').first().text();
+    if (!SERVICES_HEAD.test(top) || clean(top).length > 30) return;
+    $orig(li).find('ul a, [class*=sub] a, [class*=dropdown] a').each((__, a) => { fromMenu.push($orig(a).text()); });
+  });
+  const menu = uniqServices(fromMenu);
+  if (menu.length >= 2) return menu;
+
+  const $ = cheerio.load(html);
   const navTexts = stripChrome($);
+
+  // 2. Elements whose class names say "service"
+  const fromClass = [];
+  $('[class]').each((_, el) => {
+    const cls = String($(el).attr('class') || '');
+    if (!/(^|[\s_-])(svc|service|services|service-item|service-card)([\s_-]|$)/i.test(cls)) return;
+    const t = clean($(el).text());
+    if (t.length >= 3 && t.length <= 70) fromClass.push(t);
+    else $(el).find('h2,h3,h4,h5,h6,button,[role=tab]').each((__, it) => fromClass.push($(it).text()));
+  });
+  const byClass = uniqServices(fromClass, navTexts);
+  if (byClass.length >= 3) return byClass;
+
+  // 3. Items under a "services" heading (climbing out of page-builder wrappers)
   const found = [];
   $('h1,h2,h3,h4,h5,h6').each((_, el) => {
     if (!SERVICES_HEAD.test($(el).text()) || $(el).text().length > 60) return;
     let box = $(el).parent();
-    for (let i = 0; i < 4 && box.length && box.text().length < 120; i++) box = box.parent();
+    for (let i = 0; i < 6 && box.text().length < 200; i++) {
+      const up = box.parent();
+      if (!up.length || up.is('html')) break;
+      box = up;
+    }
     if (!box.length || box.text().length > 6000) return;
-    box.find('h2,h3,h4,h5,h6,li,strong,b,dt').each((__, it) => { if (it !== el) found.push($(it).text()); });
+    box.find('h2,h3,h4,h5,h6,li,strong,b,dt,button,[role=tab]').each((__, it) => { if (it !== el) found.push($(it).text()); });
   });
-  return uniqServices(found, navTexts);
+  const bySection = uniqServices(found, navTexts);
+  return [menu, byClass, bySection].sort((a, b) => b.length - a.length)[0];
 }
 
 /** Services from a dedicated services page: its section headings. */
@@ -321,11 +360,11 @@ export async function readSite(url) {
   }
 
   // Services page, if the homepage didn't list them
-  // A dedicated services page is the most reliable source, so it wins when it lists enough
+  // Services page, only when the homepage didn't list enough
   let services = parsed.services;
-  if (parsed.servicesUrl) {
+  if (parsed.servicesUrl && services.length < 3) {
     const html = await fetchHtml(parsed.servicesUrl);
-    if (html) { const s = servicesFromPage(html); if (s.length >= 3 || s.length > services.length) services = s; }
+    if (html) { const s = servicesFromPage(html); if (s.length > services.length) services = s; }
   }
 
   // Description fallback: About page first paragraph, then homepage lead text

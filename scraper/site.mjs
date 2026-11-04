@@ -29,6 +29,13 @@ const NOT_SERVICE = /^(home|about|contact|get started|read more|learn more|view 
 
 function abs(href, base) { try { return new URL(href, base).href; } catch { return null; } }
 const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
+// Text of an element with a space between child elements ("<span>01</span>Social" -> "01 Social")
+const textOf = ($, el) => {
+  const parts = [];
+  const walk = n => { if (n.type === 'text') parts.push(n.data); else if (n.children) n.children.forEach(walk); };
+  walk($(el).get(0) || {});
+  return clean(parts.join(' '));
+};
 
 function jsonLd($) {
   const out = [];
@@ -48,7 +55,7 @@ function cleanTitle(t) {
   return parts[0] || t.trim();
 }
 
-const NOT_SERVICE_START = /^(let'?s|let’s|have a|tell us|thank you|your |what you|get in touch|contact|about us|use cases|book a|become a|join |follow|subscribe|why |how |our clients|our work|meet )/i;
+const NOT_SERVICE_START = /^(view all|see all|read the|read more|explore|discover|let'?s|let’s|have a|tell us|thank you|your |what you|get in touch|contact|about us|use cases|book a|become a|join |follow|subscribe|why |how |our clients|our work|meet )/i;
 
 function uniqServices(list, exclude = new Set()) {
   const seen = new Set(), out = [];
@@ -90,7 +97,7 @@ export function servicesFromSections($in) {
   $orig('nav li, header li').each((_, li) => {
     const top = $orig(li).children('a,button,span').first().text();
     if (!SERVICES_HEAD.test(top) || clean(top).length > 30) return;
-    $orig(li).find('ul a, [class*=sub] a, [class*=dropdown] a').each((__, a) => { fromMenu.push($orig(a).text()); });
+    $orig(li).find('ul a, [class*=sub] a, [class*=dropdown] a').each((__, a) => { fromMenu.push(textOf($orig, a)); });
   });
   const menu = uniqServices(fromMenu);
   if (menu.length >= 2) return menu;
@@ -99,15 +106,17 @@ export function servicesFromSections($in) {
   const navTexts = stripChrome($);
 
   // 2. Elements whose class names say "service"
-  const fromClass = [];
+  // Grouped by the class that marks them, keeping the biggest group (e.g. all "svc-tab" buttons)
+  const groups = {};
   $('[class]').each((_, el) => {
-    const cls = String($(el).attr('class') || '');
-    if (!/(^|[\s_-])(svc|service|services|service-item|service-card)([\s_-]|$)/i.test(cls)) return;
-    const t = clean($(el).text());
-    if (t.length >= 3 && t.length <= 70) fromClass.push(t);
-    else $(el).find('h2,h3,h4,h5,h6,button,[role=tab]').each((__, it) => fromClass.push($(it).text()));
+    const token = String($(el).attr('class') || '').split(/\s+/).find(c => /^(svc|services?)([_-][a-z0-9_-]+)?$|[_-](svc|services?)([_-]|$)/i.test(c));
+    if (!token) return;
+    const t = textOf($, el);
+    (groups[token] = groups[token] || []);
+    if (t.length >= 3 && t.length <= 70) groups[token].push(t);
+    else $(el).find('h2,h3,h4,h5,h6,button,[role=tab]').each((__, it) => groups[token].push(textOf($, it)));
   });
-  const byClass = uniqServices(fromClass, navTexts);
+  const byClass = Object.values(groups).map(g => uniqServices(g, navTexts)).sort((a, b) => b.length - a.length)[0] || [];
   if (byClass.length >= 3) return byClass;
 
   // 3. Items under a "services" heading (climbing out of page-builder wrappers)
@@ -121,7 +130,7 @@ export function servicesFromSections($in) {
       box = up;
     }
     if (!box.length || box.text().length > 6000) return;
-    box.find('h2,h3,h4,h5,h6,li,strong,b,dt,button,[role=tab]').each((__, it) => { if (it !== el) found.push($(it).text()); });
+    box.find('h2,h3,h4,h5,h6,li,strong,b,dt,button,[role=tab]').each((__, it) => { if (it !== el) found.push(textOf($, it)); });
   });
   const bySection = uniqServices(found, navTexts);
   return [menu, byClass, bySection].sort((a, b) => b.length - a.length)[0];

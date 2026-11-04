@@ -118,8 +118,9 @@ test('services ignore forms, menus and questions', () => {
 
 test('services from tab buttons in a separate page-builder block (Müller’s pattern)', () => {
   const html = `<html><body><div class="wrap"><div class="el"><section class="section"><p>02 — What we do</p><h2>Our Services</h2></section></div>
-  <div class="el"><div class="tabs"><button class="svc-tab is-active">01 SOCIAL MEDIA &amp; PR MANAGEMENT</button><button class="svc-tab">02 TV CREATIVE &amp; CAMPAIGNS DEVELOPMENT</button>
-  <button class="svc-tab">03 MEDIA PERFORMANCE &amp; GROWTH</button></div></div>
+  <div class="el"><div class="tabs"><button class="svc-tab is-active"><span>01</span>SOCIAL MEDIA &amp; PR MANAGEMENT</button><button class="svc-tab">02 TV CREATIVE &amp; CAMPAIGNS DEVELOPMENT</button>
+  <button class="svc-tab">03 MEDIA PERFORMANCE &amp; GROWTH</button></div>
+  <a class="svc-more">View all services</a><div class="why-service"><span>02</span>Premium craft<span>Broadcast-quality production, in-house, end to end, every single time</span></div></div>
   <a class="work-item">01 LARCH CAMPAIGN 2026</a><form><h3>Let's build something</h3></form></div></body></html>`;
   assert.deepEqual(parseSite(html, 'https://x.com/').services, ['SOCIAL MEDIA & PR MANAGEMENT', 'TV CREATIVE & CAMPAIGNS DEVELOPMENT', 'MEDIA PERFORMANCE & GROWTH']);
 });

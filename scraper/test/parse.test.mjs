@@ -107,3 +107,11 @@ test('services page and about page extraction', () => {
   const about = aboutFromPage('<main><p>Short.</p><p>We are a creative studio founded in Cairo that helps ambitious brands tell clearer stories across every channel.</p></main><footer><p>© 2026 All rights reserved and some more words to pass the length check here.</p></footer>');
   assert.equal(about, 'We are a creative studio founded in Cairo that helps ambitious brands tell clearer stories across every channel.');
 });
+
+test('services ignore forms, menus and questions', () => {
+  const html = `<html><body><header><nav><a href="/about-us">About Us</a><a href="/use-cases">Use Cases</a></nav></header>
+  <section><h2>Our Services</h2><div><h3>Digital problems?Storky eat them for breakfast</h3><h4>Social Media Marketing</h4><h4>Video Production</h4><h4>Use Cases</h4><h4>Website Development</h4></div></section>
+  <form><h2>Services needed</h2><h3>Let's build something</h3><h3>Your business</h3><h3>Tell us more</h3></form></body></html>`;
+  const s = parseSite(html, 'https://x.com/');
+  assert.deepEqual(s.services, ['Social Media Marketing', 'Video Production', 'Website Development']);
+});

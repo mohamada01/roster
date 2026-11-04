@@ -48,12 +48,14 @@ function cleanTitle(t) {
   return parts[0] || t.trim();
 }
 
-function uniqServices(list) {
+const NOT_SERVICE_START = /^(let'?s|let’s|have a|tell us|thank you|your |what you|get in touch|contact|about us|use cases|book a|become a|join |follow|subscribe|why |how |our clients|our work|meet )/i;
+
+function uniqServices(list, exclude = new Set()) {
   const seen = new Set(), out = [];
   for (const raw of list) {
-    const s = clean(raw).replace(/[:.→→]+$/, '').trim();
-    if (s.length < 3 || s.length > 70 || NOT_SERVICE.test(s) || s.split(' ').length > 9) continue;
-    if (/[?!]$/.test(s)) continue;
+    const s = clean(raw).replace(/[:.→]+$/, '').trim();
+    if (s.length < 3 || s.length > 70 || NOT_SERVICE.test(s) || NOT_SERVICE_START.test(s) || s.split(' ').length > 9) continue;
+    if (/[?!]/.test(s) || exclude.has(s.toLowerCase())) continue;
     const k = s.toLowerCase();
     if (seen.has(k)) continue;
     seen.add(k); out.push(s);
@@ -63,7 +65,18 @@ function uniqServices(list) {
 }
 
 /** Services listed on a page: items inside a section whose heading says "services". */
-export function servicesFromSections($) {
+// Remove parts of a page that are never a services list: menus, forms, popups, footers.
+// Returns the menu link texts so they can be excluded too.
+function stripChrome($) {
+  const navTexts = new Set();
+  $('header a, nav a, footer a').each((_, a) => navTexts.add(clean($(a).text()).toLowerCase()));
+  $('header,nav,footer,form,dialog,[role=dialog],[aria-modal=true],script,style,noscript,[class*=modal],[class*=popup],[id*=modal]').remove();
+  return navTexts;
+}
+
+export function servicesFromSections($in) {
+  const $ = cheerio.load($in.html());
+  const navTexts = stripChrome($);
   const found = [];
   $('h1,h2,h3,h4,h5,h6').each((_, el) => {
     if (!SERVICES_HEAD.test($(el).text()) || $(el).text().length > 60) return;
@@ -72,18 +85,18 @@ export function servicesFromSections($) {
     if (!box.length || box.text().length > 6000) return;
     box.find('h2,h3,h4,h5,h6,li,strong,b,dt').each((__, it) => { if (it !== el) found.push($(it).text()); });
   });
-  return uniqServices(found);
+  return uniqServices(found, navTexts);
 }
 
 /** Services from a dedicated services page: its section headings. */
 export function servicesFromPage(html) {
-  const $ = cheerio.load(html);
-  $('header,footer,nav,script,style,noscript').remove();
-  const fromSections = servicesFromSections($);
+  const fromSections = servicesFromSections(cheerio.load(html));
   if (fromSections.length >= 3) return fromSections;
+  const $ = cheerio.load(html);
+  const navTexts = stripChrome($);
   const heads = [];
   $('h2,h3,h4').each((_, el) => heads.push($(el).text()));
-  return uniqServices(heads);
+  return uniqServices(heads, navTexts);
 }
 
 /** First substantial paragraphs of an About page, verbatim. */
@@ -308,10 +321,11 @@ export async function readSite(url) {
   }
 
   // Services page, if the homepage didn't list them
+  // A dedicated services page is the most reliable source, so it wins when it lists enough
   let services = parsed.services;
-  if (parsed.servicesUrl && services.length < 3) {
+  if (parsed.servicesUrl) {
     const html = await fetchHtml(parsed.servicesUrl);
-    if (html) { const s = servicesFromPage(html); if (s.length > services.length) services = s; }
+    if (html) { const s = servicesFromPage(html); if (s.length >= 3 || s.length > services.length) services = s; }
   }
 
   // Description fallback: About page first paragraph, then homepage lead text

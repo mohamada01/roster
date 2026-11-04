@@ -173,8 +173,9 @@ function Sources() {
   const PROV: { n: string; d: { ar: string; en: string }; s: 'ready' | 'setup' | 'key' }[] = [
     { n: lang === 'ar' ? 'موقع الشركة' : 'Company website', d: { ar: 'الاسم والوصف واللوجو ولينكات المنصات. المواقع اللي بتتحمّل بالجافاسكريبت بتتقري بمتصفح كامل.', en: 'Name, description, logo and platform links. JavaScript sites are read with a full browser.' }, s: 'ready' },
     { n: 'Sortlist', d: { ar: 'التقييم وعدد الريفيوهات من صفحة الوكالة العامة.', en: 'Rating and review count from the public agency page.' }, s: 'ready' },
-    { n: 'TikTok · LinkedIn · Facebook', d: { ar: 'من الصفحات العامة. ساعات المنصة بتمنع القراءة، ووقتها تكتب الرقم يدوي.', en: 'From public pages. Sometimes the platform blocks it; then type the number in.' }, s: 'ready' },
-    { n: 'Instagram', d: { ar: 'من البروفايل العام. إنستجرام كتير بيمنع القراءة الآلية، فالرقم ممكن ييجي فاضي.', en: 'From the public profile. Instagram often blocks automated reads, so it may come back empty.' }, s: 'ready' },
+    { n: 'LinkedIn · TikTok · Behance', d: { ar: 'من الصفحات العامة: المتابعين والاسم والنبذة واللوجو. ولو الموقع واقف، البيانات بتيجي منها.', en: 'From public pages: followers, name, bio and logo. If the website is down, data comes from here.' }, s: 'ready' },
+    { n: 'Instagram', d: { ar: 'إنستجرام بيمنع القراءة الآلية، ومش بنحاول نتخطاه. الطريقة المجانية الرسمية: Instagram API من Meta (الخطوات في README). لحد ما يتربط، الرقم بيتكتب يدوي.', en: "Instagram blocks automated reads and we don't work around it. The free official route is Meta's Instagram API (steps in the README). Until then, type the number in." }, s: 'key' },
+    { n: 'Facebook', d: { ar: 'الصفحة العامة بس. لو فيسبوك طلب تسجيل دخول، الرقم بيتكتب يدوي.', en: 'Public page only. If Facebook asks for a sign-in, type the number in.' }, s: 'setup' },
     { n: 'YouTube', d: { ar: 'شغال من غير مفتاح، وأدق بمفتاح YouTube Data API المجاني.', en: 'Works without a key; more reliable with the free YouTube Data API key.' }, s: 'key' },
     { n: 'X', d: { ar: 'مفيش طريقة مجانية. الرقم بيتكتب يدوي.', en: 'No free source. Type the number in by hand.' }, s: 'setup' },
     { n: lang === 'ar' ? 'التصنيف' : 'Classification', d: { ar: 'تلقائي من كلمات الموقع. أدق لو ضفت مفتاح Gemini المجاني.', en: 'Automatic from site wording. More accurate with a free Gemini key.' }, s: 'key' }

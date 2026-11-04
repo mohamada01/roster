@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseSite } from '../site.mjs';
 import { normalize, parseCount, isProfileLink, handleOf } from '../lib.mjs';
-import { parseInstagramJson, parseMetaFollowers, parseTikTok, parseYouTube } from '../platforms.mjs';
+import { parseMetaFollowers, parseTikTok, parseYouTube, parseLinkedIn, websiteFromProfile } from '../platforms.mjs';
 import { parseSortlist } from '../sortlist.mjs';
 import { classifyByKeywords } from '../classify.mjs';
 
@@ -57,11 +57,10 @@ test('parses counts', () => {
   assert.equal(parseCount('1,204'), 1204);
   assert.equal(parseCount('2.1M'), 2100000);
   assert.equal(parseCount('8,900'), 8900);
-  assert.equal(parseInstagramJson('{"data":{"user":{"edge_followed_by":{"count":48211},"external_url":"https://muller-mena.com"}}}').count, 48211);
   assert.equal(parseMetaFollowers('<meta content="12K Followers, 300 Following">'), 12000);
   assert.equal(parseMetaFollowers('Stork Advertising | 8,900 followers on LinkedIn'), 8900);
-  assert.equal(parseTikTok('..."stats":{"followerCount":204001,"followingCount":3}'), 204001);
-  assert.equal(parseYouTube('"subscriberCountText":{"accessibility":{},"simpleText":"41.2K subscribers"}'), 41200);
+  assert.equal(parseTikTok('..."stats":{"followerCount":204001,"followingCount":3}').count, 204001);
+  assert.equal(parseYouTube('"subscriberCountText":{"accessibility":{},"simpleText":"41.2K subscribers"}').count, 41200);
 });
 
 test('parses Sortlist rating', () => {
@@ -131,4 +130,52 @@ test('services from the Services menu dropdown (Stork pattern)', () => {
   <li><a href="/c">Commercial Video Production</a></li><li><a href="/d">Website Development in 2 weeks</a></li></ul></li><li><a href="/blog">Blog</a></li></ul></nav></header>
   <main><h2>Industries</h2><h3>01. E-Commerce &amp; D2C Scaling</h3></main></body></html>`;
   assert.deepEqual(parseSite(html, 'https://x.com/').services, ['Strategic Social Media Agency – Marketing & Intelligence', 'Generative Engine Optimization (GEO)', 'Commercial Video Production', 'Website Development in 2 weeks']);
+});
+
+import { pickName, deadReason, pickLogo, nameFromDomain } from '../site.mjs';
+import * as cheerio from 'cheerio';
+
+test('picks the name that matches the domain, not "Home" or a tagline', () => {
+  assert.equal(pickName([null, null, null, 'Home', 'Kijamii'], 'https://kijamii.com/'), 'Kijamii');
+  assert.equal(pickName([null, null, null, 'Home'], 'https://kijamii.com/'), 'Kijamii');
+  assert.equal(pickName([null, null, null, 'Creating. Innovating. Elevating.'], 'https://oncreation.net/'), 'Oncreation');
+  assert.equal(pickName(["Müller's", null, null, "Müller's", 'Digital and Creative Marketing Agency'], 'https://muller-mena.com/'), "Müller's");
+  assert.equal(pickName([null, null, null, 'admepro', 'admepro AI-Powered Creative & Digital Marketing Agency'], 'https://admepro.com/'), 'admepro');
+  assert.equal(pickName([null, null, null, 'Access Denied'], 'https://nammi.co/'), 'Nammi');
+  assert.equal(nameFromDomain('https://www.big-fish-mena.com/'), 'Big Fish Mena');
+});
+
+test('detects parked, protected and dead websites', () => {
+  assert.equal(deadReason({ html: '<p>This domain is for sale</p>', finalUrl: 'https://nammi.co/', title: 'nammi.co', logo: '', bodyLength: 300 }), 'site_parked');
+  assert.equal(deadReason({ html: '', finalUrl: 'https://nammi.co/', title: 'Access Denied', logo: 'https://forsale.godaddy.com/favicon.ico', bodyLength: 50 }), 'site_parked');
+  assert.equal(deadReason({ html: '<div id="cf-chl">x</div>', finalUrl: 'https://jumppeak.com/', title: 'Just a moment...', logo: '', bodyLength: 200 }), 'site_blocked');
+  assert.equal(deadReason({ html: '', finalUrl: 'chrome-error://chromewebdata/', title: '', logo: '', bodyLength: 0 }), 'site_down');
+  assert.equal(deadReason({ html: '<h1>Coming soon</h1>', finalUrl: 'https://x.com/', title: 'X', logo: '', bodyLength: 120 }), 'site_empty');
+  assert.equal(deadReason({ html: '<p>Real agency with services and a long page</p>', finalUrl: 'https://x.com/', title: 'X Agency', logo: '', bodyLength: 5000 }), null);
+});
+
+test('logo: prefers apple-touch and large icons, then the header logo; a tiny favicon is weak', () => {
+  const pick = html => { const $ = cheerio.load(html); return pickLogo($, {}, n => $(`meta[property="${n}"]`).attr('content') || null, 'https://x.com/'); };
+  assert.deepEqual(pick('<link rel="icon" href="/fav.ico"><link rel="apple-touch-icon" href="/apple.png"><header><img class="logo" src="/logo.svg"></header>'), { logo: 'https://x.com/apple.png', logoQuality: 'good' });
+  assert.deepEqual(pick('<link rel="icon" href="/fav-32.png" sizes="32x32"><header><img src="/brand-logo.png"></header><meta property="og:image" content="/hero.jpg">'), { logo: 'https://x.com/brand-logo.png', logoQuality: 'good' });
+  assert.deepEqual(pick('<meta property="og:image" content="/grini-hero.jpg">'), { logo: 'https://x.com/favicon.ico', logoQuality: 'weak' });
+});
+
+test('LinkedIn public page: name, about text, website, followers', () => {
+  const html = `<meta property="og:title" content="Stork Advertising | LinkedIn"><meta property="og:description" content="Stork Advertising | 447 followers on LinkedIn. Ideas that fly | We build brands">
+  <meta property="og:image" content="https://media.licdn.com/logo.png">
+  <p data-test-id="about-us__description">Stork is a performance-led digital marketing agency.</p>
+  <div data-test-id="about-us__website"><a href="https://www.linkedin.com/redir/redirect?url=https%3A%2F%2Fstorkadvertising.com&urlhash=x">site</a></div>`;
+  const r = parseLinkedIn(html);
+  assert.equal(r.count, 447);
+  assert.deepEqual(r.profile, { name: 'Stork Advertising', bio: 'Stork is a performance-led digital marketing agency.', avatar: 'https://media.licdn.com/logo.png', website: 'https://storkadvertising.com' });
+  assert.equal(websiteFromProfile(r), 'https://storkadvertising.com');
+  assert.equal(websiteFromProfile({ profile: { website: 'https://linktr.ee/brand' } }), null);
+});
+
+test('TikTok profile fields', () => {
+  const r = parseTikTok('{"user":{"nickname":"Pplofintern","signature":"Creative studio \\u2728 Cairo","avatarLarger":"https://p16.tiktokcdn.com/a.jpg"},"stats":{"followerCount":3114}}');
+  assert.equal(r.count, 3114);
+  assert.equal(r.profile.name, 'Pplofintern');
+  assert.equal(r.profile.bio, 'Creative studio ✨ Cairo');
 });

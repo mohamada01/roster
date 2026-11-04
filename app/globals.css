@@ -550,3 +550,8 @@ a.st{text-decoration:none}
 .svc-list li{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:10px;background:var(--surface-2);font-size:15px;line-height:1.4;direction:ltr;unicode-bidi:isolate;text-align:left}
 .svc-list li::before{content:"";flex:none;width:7px;height:7px;border-radius:50%;background:var(--accent)}
 .svc-wrap small{font-size:13px}
+
+/* Image logos sit on white so dark marks stay visible in dark mode */
+.logo.has-img{background:#fff;box-shadow:inset 0 0 0 1px var(--line)}
+.site-note{display:flex;gap:10px;align-items:flex-start;margin:0 0 14px;padding:10px 12px;border-radius:10px;background:color-mix(in srgb,var(--warn) 10%,transparent);font-size:13px;color:var(--fg);line-height:1.6}
+.site-note .d{margin-top:6px}

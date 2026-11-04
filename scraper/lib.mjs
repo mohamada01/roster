@@ -79,7 +79,8 @@ export function parseCount(s) {
   return Number.isFinite(v) ? Math.round(v * mult) : null;
 }
 
-export const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
+// An honest crawler identity. We never disguise the scraper as a person's browser.
+export const UA = 'Mozilla/5.0 (compatible; RosterBot/1.0; +https://github.com/mohamada01/roster)';
 
 export async function get(url, { headers = {}, timeout = 20000 } = {}) {
   const ctl = new AbortController();

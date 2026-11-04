@@ -33,6 +33,10 @@ export const ISSUES: Record<string, L> = {
   no_website: { ar: 'مفيش موقع للشركة، وإنستجرام منع قراءة البايو. اضغط «تعديل» وحط لينك الموقع في خانة «الموقع».', en: 'No website found, and Instagram blocked reading the bio. Click Edit and put the site link in the Website field.' },
   followers_blocked: { ar: 'المنصات منعت قراءة أعداد المتابعين. تقدر تكتبها يدوي من «تعديل».', en: 'The platforms blocked reading follower counts. You can type them in from Edit.' },
   followers_some_missing: { ar: 'بعض المنصات ما رجّعتش عدد المتابعين. تقدر تكتبه يدوي من «تعديل».', en: 'Some platforms did not return a follower count. You can type it in from Edit.' },
+  site_parked: { ar: 'الدومين معروض للبيع ومش موقع الشركة. البيانات اتاخدت من حساباتها على السوشيال.', en: 'The domain is parked or for sale, not the company site. Data was taken from its social profiles.' },
+  site_blocked: { ar: 'الموقع عليه حماية ضد البرامج الآلية، فما قريناهوش. البيانات اتاخدت من حساباتها على السوشيال.', en: 'The website has bot protection, so we did not read it. Data was taken from its social profiles.' },
+  site_down: { ar: 'الموقع واقف أو بيرجّع خطأ. البيانات اتاخدت من حساباتها على السوشيال.', en: 'The website is down or returns an error. Data was taken from its social profiles.' },
+  site_empty: { ar: 'الموقع لسه «قريباً» ومفيهوش محتوى. البيانات اتاخدت من حساباتها على السوشيال.', en: 'The website is a "coming soon" page. Data was taken from its social profiles.' },
   error: { ar: 'حصل خطأ غير متوقع أثناء السحب. جرّب تاني.', en: 'Something went wrong while fetching. Try again.' }
 };
 

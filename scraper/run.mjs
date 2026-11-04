@@ -4,8 +4,8 @@
 //   MODE=all      -> every company
 //   COMPANY_ID=…  -> just one company
 import { createClient } from '@supabase/supabase-js';
-import { readSite, closeBrowser } from './site.mjs';
-import { FETCHERS } from './platforms.mjs';
+import { readSite, closeBrowser, isGenericName, nameFromDomain } from './site.mjs';
+import { FETCHERS, websiteFromProfile } from './platforms.mjs';
 import { readSortlist, discoverSortlist } from './sortlist.mjs';
 import { classify } from './classify.mjs';
 import { normalize, platformOf, isProfileLink, PLATFORMS, hostOf, sleep } from './lib.mjs';
@@ -66,6 +66,22 @@ async function history(id, today, followers) {
   return { spark, growth };
 }
 
+// Which profile to trust first for name, description and logo when the website can't be used
+const PROFILE_ORDER = ['linkedin', 'instagram', 'facebook', 'tiktok', 'youtube', 'behance', 'dribbble'];
+const PROFILE_SOURCE = { linkedin: 'linkedin profile', instagram: 'instagram profile', facebook: 'facebook profile', tiktok: 'tiktok profile', youtube: 'youtube profile', behance: 'behance profile', dribbble: 'dribbble profile' };
+
+async function fetchProfiles(links, done, profiles, followers) {
+  for (const p of PLATFORMS) {
+    if (!links[p] || done.has(p)) continue;
+    done.add(p);
+    const r = await FETCHERS[p](links[p]).catch(() => ({ count: null, reason: 'error' }));
+    followers[p] = r.count ?? null;
+    if (r.profile) profiles[p] = r.profile;
+    console.log(`  ${p}: ${r.count ?? '— ' + (r.reason || '')}${r.profile && r.profile.name ? ' · ' + r.profile.name : ''}`);
+    await sleep(1200);
+  }
+}
+
 async function processCompany(c) {
   console.log(`\n▶ ${c.name || c.input_url}`);
   const issues = [];
@@ -75,75 +91,86 @@ async function processCompany(c) {
   let website = c.website || (input.kind === 'website' ? input.url : null);
   await upd(c.id, { status: 'running', stage: 0, run_at: new Date().toISOString() });
 
-  // 0. Website. A social-only company may reveal its site in the Instagram bio.
-  const followers = {};
-  const cache = {};
-  if (!website && links.instagram) {
-    cache.instagram = await FETCHERS.instagram(links.instagram);
-    const ext = cache.instagram.extra && cache.instagram.extra.externalUrl;
-    if (ext && !platformOf(ext) && !/linktr\.ee|beacons\.ai|bio\.link|wa\.me/i.test(ext)) website = normalize(ext).url;
-  }
-  let site = null;
+  // 0. Website
+  let site = null, siteProblem = null;
   if (website) {
     site = await readSite(website);
-    if (site.error) { issues.push(site.error); site = null; }
-    else if (!site.description) issues.push('site_no_description');
-  } else issues.push('no_website');
+    if (site.error) { siteProblem = site.error; site = null; }
+  }
   await upd(c.id, { stage: 1 });
 
   // 1. Platform links from the site (links the team added win)
   if (site) for (const [k, u] of Object.entries(site.links)) if (!links[k] && isProfileLink(u)) links[k] = u;
   await upd(c.id, { stage: 2, links });
 
-  // 2. Followers, one platform at a time
-  for (const p of PLATFORMS) {
-    if (!links[p]) continue;
-    const r = cache[p] || await FETCHERS[p](links[p]).catch(() => ({ count: null, reason: 'error' }));
-    followers[p] = r.count;
-    console.log(`  ${p}: ${r.count ?? '— ' + (r.reason || '')}`);
-    await sleep(1200);
+  // 2. Social profiles: followers, and name/bio/logo/website for the fallback
+  const followers = {}, profiles = {}, done = new Set();
+  await fetchProfiles(links, done, profiles, followers);
+
+  // No usable website? Look for one on the profiles and read it
+  if (!site) {
+    const found = PROFILE_ORDER.map(p => websiteFromProfile({ profile: profiles[p] })).find(w => w && hostOf(w) !== hostOf(website || ''));
+    if (found) {
+      console.log(`  website from profile: ${found}`);
+      const s2 = await readSite(found);
+      if (!s2.error) {
+        site = s2; website = normalize(found).url; siteProblem = null;
+        for (const [k, u] of Object.entries(site.links)) if (!links[k] && isProfileLink(u)) links[k] = u;
+        await fetchProfiles(links, done, profiles, followers);
+      }
+    }
   }
+  if (!site) issues.push(siteProblem || 'no_website');
+  else if (!site.description) issues.push('site_no_description');
+
   const counted = Object.values(followers).filter(v => v != null).length;
   if (Object.keys(followers).length && !counted) issues.push('followers_blocked');
   else if (Object.keys(followers).length > counted) issues.push('followers_some_missing');
   await upd(c.id, { stage: 3 });
 
+  // Fallbacks from the profiles, always verbatim
+  const firstProfile = field => { for (const p of PROFILE_ORDER) { const v = profiles[p] && profiles[p][field]; if (v) return { v, p }; } return null; };
+  let description = site && site.description, descriptionSource = site && site.descriptionSource;
+  if (!description) { const b = firstProfile('bio'); if (b) { description = b.v; descriptionSource = PROFILE_SOURCE[b.p]; } }
+  let name = site && site.name;
+  if (!name) { const n = firstProfile('name'); name = n ? n.v : null; }
+  let logo = site && site.logoQuality === 'good' ? site.logo : null;
+  if (!logo) { const a = firstProfile('avatar'); logo = a ? a.v : (site ? site.logo : null); }
+
   // 3. Sortlist
   let sl = null;
   const slUrl = links.sortlist || c.sortlist_url;
   if (slUrl) { const r = await readSortlist(slUrl); if (!r.error) { const { html, ...rest } = r; sl = rest; } }
-  else if (site && site.name) sl = await discoverSortlist(site.name, hostOf(website));
+  else if (site && site.name && website) sl = await discoverSortlist(site.name, hostOf(website));
   if (sl) links.sortlist = sl.url;
   await upd(c.id, { stage: 4 });
 
-  // 4. Category
-  const category = site ? await classify(site.description, site.classifyText) : (c.category || 'none');
+  // 4. Category, from the site or, without one, from the profile bios
+  const bios = Object.values(profiles).map(p => p.bio).filter(Boolean).join(' ');
+  const category = description ? await classify(description, (site ? site.classifyText : '') + ' ' + bios) : 'none';
 
   const today = new Date().toISOString().slice(0, 10);
   const counts = Object.fromEntries(Object.entries(followers).filter(([, v]) => v != null));
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
   const { spark, growth } = total ? await history(c.id, today, counts) : { spark: c.spark || [], growth: c.growth_30d };
 
-  const hasCore = site && site.description;
-  const status = !site && !total ? 'failed' : (hasCore && !issues.some(i => i === 'followers_blocked')) ? 'done' : 'partial';
-  const name = (site && site.name) || c.name;
+  const status = !description && !total ? 'failed' : (description && !issues.includes('followers_blocked')) ? 'done' : 'partial';
 
   await upd(c.id, {
-    name, website: website || null, domain: website ? hostOf(website) : c.domain,
-    description: site ? site.description : c.description,
-    description_source: site ? site.descriptionSource : c.description_source,
-    logo_url: site ? site.logo : c.logo_url,
+    name: name || (isGenericName(c.name) ? nameFromDomain(website || c.input_url) || c.name : c.name), website: website || null, domain: website ? hostOf(website) : c.domain,
+    description: description || null, description_source: descriptionSource || null,
+    logo_url: logo || null,
     countries: site && site.countries.length ? site.countries : c.countries,
-    services: site && site.services && site.services.length ? site.services : c.services,
-    about: site ? site.about : c.about, about_source: site ? site.aboutSource : c.about_source,
-    contact: site ? site.contact : c.contact,
+    services: site && site.services && site.services.length ? site.services : (site ? [] : c.services),
+    about: site ? site.about : null, about_source: site ? site.aboutSource : null,
+    contact: site ? site.contact : {},
     founded: (site && site.founded) || c.founded,
     links, followers, followers_total: total, spark, growth_30d: growth,
     sortlist_url: sl ? sl.url : c.sortlist_url, sortlist_rating: sl ? sl.rating : c.sortlist_rating, sortlist_reviews: sl ? sl.reviews : c.sortlist_reviews,
     category: category === 'none' ? c.category : category,
-    status, stage: status === 'done' ? 5 : !site ? 0 : issues.includes('followers_blocked') ? 2 : 5, issues, fetched_at: new Date().toISOString()
+    status, stage: status === 'done' ? 5 : !description ? 0 : issues.includes('followers_blocked') ? 2 : 5, issues, fetched_at: new Date().toISOString()
   });
-  console.log(`  → ${status}${issues.length ? ' (' + issues.join(', ') + ')' : ''}`);
+  console.log(`  → ${status}${issues.length ? ' (' + issues.join(', ') + ')' : ''} · ${name || '?'} · desc from ${descriptionSource || '-'} · logo ${logo ? (site && logo === site.logo ? 'site' : 'profile') : '-'}`);
 }
 
 const list = await targets();

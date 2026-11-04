@@ -60,10 +60,12 @@ export default function Company({ slug }: { slug: string }) {
     </div></section>
   );
 
+  const siteIssue = c.issues.find(i => /^site_(parked|blocked|down|empty)$/.test(i) && ISSUES[i]);
   // About: verbatim description, About-page text and services
   const hasAbout = !!(c.description || c.about || c.services.length);
   const aboutP = hasAbout && (
     <section className="panel"><h2>{t.about}</h2>
+      {siteIssue && <p className="site-note"><i className="d ph" />{ISSUES[siteIssue][lang]}</p>}
       {c.description && <p className="quote" lang="en">{c.description}</p>}
       {!c.sample && c.description && <div className="src"><i />{c.edited.includes('description') ? t.edited : t.descSrc(t.srcName[c.description_source || 'meta description'] || c.description_source || '', c.domain || '')}</div>}
       {c.about && c.about.trim() !== (c.description || '').trim() && <div className="svc-wrap"><small>{t.aboutMore}</small>
@@ -139,7 +141,7 @@ export default function Company({ slug }: { slug: string }) {
           <button className="btn" type="button" aria-pressed={sh} onClick={() => toggleFav(c.id)}>{Ic.heart}<span>{sh ? t.remShort : t.addShort}</span></button>
           {!inc && <button className="btn" type="button" aria-pressed={inCmp} onClick={() => toggleCmp(c.id)}>{inCmp ? t.inCompare : t.compare}</button>}
           {canEdit && <button className="btn" type="button" onClick={() => setEditing(true)}>{Ic.pen}<span>{t.edit}</span></button>}
-          {site && <a className="btn primary" href={site} target="_blank" rel="noopener noreferrer">{t.visit}{Ic.ext}</a>}
+          {site && !/^site_(parked|down)$/.test(siteIssue || '') && <a className="btn primary" href={site} target="_blank" rel="noopener noreferrer">{t.visit}{Ic.ext}</a>}
         </div>
       </section>
       <div className="d-grid"><div className="d-col">{main}</div><aside className="d-col">{side}</aside></div>

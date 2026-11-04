@@ -170,6 +170,9 @@ async function processCompany(c) {
   await pick(PROFILE_ORDER.map(p => profiles[p] && profiles[p].avatar).filter(Boolean), 'profile');
   if (c.logo_url) await pick([c.logo_url], 'kept');
   if (site) await pick(site.logoCandidates.filter(x => x.quality !== 'good'), 'site icon');
+  // Every check failed (some sites refuse image requests from bots): show the site's own pick anyway;
+  // the page hides it if it doesn't load in the visitor's browser
+  if (!logo && site && site.logoCandidates.length) { logo = site.logoCandidates[0].u; logoFrom = 'site (unchecked)'; }
 
   // 3. Sortlist
   let sl = null;

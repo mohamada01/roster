@@ -226,3 +226,11 @@ test('GoDaddy-style for-sale lander is parked', async () => {
   assert.equal(deadReason({ html: '<script>window.onload=function(){window.location.href="/lander"}</script>', finalUrl: 'https://nammi.co/', title: '', logo: null, bodyLength: 0 }), 'site_parked');
   assert.equal(deadReason({ html: '<p>hi</p>', finalUrl: 'https://nammi.co/lander', title: '', logo: null, bodyLength: 2 }), 'site_parked');
 });
+
+test('a grid of client logos is skipped even when marked "logo"', async () => {
+  const cheerio = await import('cheerio');
+  const { pickLogo } = await import('../site.mjs');
+  const $ = cheerio.load('<link rel="apple-touch-icon" href="/apple.png"><div class="row"><div class="logo-item"><img class="logo" src="/vodafone.png"></div><div class="logo-item"><img class="logo" src="/a.png"></div><div class="logo-item"><img class="logo" src="/b.png"></div><div class="logo-item"><img class="logo" src="/c.png"></div></div>');
+  const r = pickLogo($, {}, () => null, 'https://x.com/');
+  assert.ok(!r.logoCandidates.some(c => /vodafone/.test(c.u)));
+});

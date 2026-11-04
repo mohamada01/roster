@@ -241,8 +241,10 @@ export function pickLogo($, org, meta, pageUrl) {
     '[class*=logo] img, img[class*=logo], img[id*=logo], img[alt*=logo i], img[src*=logo i]',
     'header img, nav img'
   ];
+  // Outside the header link, an image that sits among many others is a client strip, not the brand
+  const alone = el => { const box = $(el).parents().slice(0, 3).last(); return !box.length || box.find('img').length < 4; };
   for (let t = 0; t < tiers.length; t++) {
-    const el = $(tiers[t]).toArray().find(own);
+    const el = $(tiers[t]).toArray().find(e => own(e) && (t === 0 || alone(e)));
     if (el) add(imgSrc(el), 4 + t * 0.1, 'good');
   }
   const ogImg = meta('og:image');

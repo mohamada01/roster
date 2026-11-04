@@ -241,10 +241,16 @@ export function pickLogo($, org, meta, pageUrl) {
     '[class*=logo] img, img[class*=logo], img[id*=logo], img[alt*=logo i], img[src*=logo i]',
     'header img, nav img'
   ];
+  // Alt text like "Vodafone logo" names another brand: only accept it if it names this company
+  const core = domainCore(pageUrl);
+  const namesUs = el => {
+    const alt = ($(el).attr('alt') || '').replace(/\blogo\b/ig, '').trim();
+    return !alt || sharesStem(fold(alt), core);
+  };
   // Outside the header link, an image that sits among many others is a client strip, not the brand
   const alone = el => { const box = $(el).parents().slice(0, 3).last(); return !box.length || box.find('img').length < 4; };
   for (let t = 0; t < tiers.length; t++) {
-    const el = $(tiers[t]).toArray().find(e => own(e) && (t === 0 || alone(e)));
+    const el = $(tiers[t]).toArray().find(e => own(e) && (t === 0 || (alone(e) && namesUs(e))));
     if (el) add(imgSrc(el), 4 + t * 0.1, 'good');
   }
   const ogImg = meta('og:image');

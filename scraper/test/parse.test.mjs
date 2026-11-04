@@ -234,3 +234,11 @@ test('a grid of client logos is skipped even when marked "logo"', async () => {
   const r = pickLogo($, {}, () => null, 'https://x.com/');
   assert.ok(!r.logoCandidates.some(c => /vodafone/.test(c.u)));
 });
+
+test('an image labelled with another brand is not our logo', async () => {
+  const cheerio = await import('cheerio');
+  const { pickLogo } = await import('../site.mjs');
+  const $ = cheerio.load('<div><div><div><img alt="Vodafone logo" src="/v.png"></div></div></div><div><div><div><img alt="Big Move logo" src="/bm.png"></div></div></div>');
+  const r = pickLogo($, {}, () => null, 'https://www.bigmove.agency/');
+  assert.equal(r.logoCandidates[0].u, 'https://www.bigmove.agency/bm.png');
+});
